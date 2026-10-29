@@ -131,6 +131,8 @@ button:focus-visible{outline:3px solid var(--lemon);outline-offset:3px}
 /* online room */
 .play-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .big-btn.alt{background:var(--aqua)}
+a.big-btn{display:inline-block;text-decoration:none}
+.on-url{margin:0;font:600 13px/1.3 var(--font-ui);color:var(--grape-soft);-webkit-user-select:text;user-select:text;overflow-wrap:anywhere}
 .on-view{display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-width:0;width:100%}
 .name-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font:500 15px var(--font-ui);color:var(--grape-soft)}
 .name-row b{color:var(--grape);font-weight:600}
@@ -223,11 +225,18 @@ button:focus-visible{outline:3px solid var(--lemon);outline-offset:3px}
       <div class="col-main">
         <h2 class="head ok">Play online</h2>
         <div class="on-view" id="onStart">
-          <p class="sub">Play with your friends. Make a room and send them the link.</p>
-          <div class="name-row"><span>You are <b id="onNameTxt">Player</b></span><button class="ghost-btn small" id="onNameBtn">Change name</button></div>
-          <button class="big-btn" id="onJoinLink" hidden>Join room</button>
-          <div class="play-row"><button class="big-btn" id="onCreate">Create room</button><button class="ghost-btn" id="onJoin">Join with a code</button></div>
-          <p class="on-err" id="onErr" role="alert" hidden></p>
+          <div class="on-view" id="onHere">
+            <p class="sub">Play with your friends. Make a room and send them the link.</p>
+            <div class="name-row"><span>You are <b id="onNameTxt">Player</b></span><button class="ghost-btn small" id="onNameBtn">Change name</button></div>
+            <button class="big-btn" id="onJoinLink" hidden>Join room</button>
+            <div class="play-row"><button class="big-btn" id="onCreate">Create room</button><button class="ghost-btn" id="onJoin">Join with a code</button></div>
+            <p class="on-err" id="onErr" role="alert" hidden></p>
+          </div>
+          <div class="on-view" id="onOff" hidden>
+            <p class="sub">Online play runs on the game's own website. Open it there, then tap Play online.</p>
+            <a class="big-btn" id="onSite" href="https://abduoturkiat-byte.github.io/puff-party/" target="_blank" rel="noopener">Open the game site</a>
+            <p class="on-url">abduoturkiat-byte.github.io/puff-party</p>
+          </div>
           <button class="ghost-btn small" id="onBack">Back</button>
         </div>
         <div class="on-view" id="onRoom" hidden>
@@ -1906,6 +1915,7 @@ $('skip').addEventListener('click',()=>{
 const NETV=1,APPID='puff-party-online-v1',NET_D=0.12,NET_DH=0.1,NET_STEP=0.05,MAX_HUMANS=8;
 const HUMAN_COLS=['#ff4fa3','#19d3c5','#ffd23f','#8b5cf6','#ff8a3d','#4fb3ff','#9be15d','#ff6b6b'];
 const NETT=window.__net||null;
+const ON_SITE=!!NETT||/(^|\.)github\.io$/.test(location.hostname);
 /* Optional TURN relays for networks that block direct connections, e.g. [{urls:'turn:host:443',username:'u',credential:'p'}]. */
 const TURN_SERVERS=[];
 const ONLINE_SLOTS=[{label:'Easy',d:1,keep:0.8,pool:['race']},{label:'Medium',d:2,keep:0.75,pool:['bridge']},{label:'Hard',d:3,keep:0.75,pool:['flood']},{label:'Final',d:4,keep:0,pool:['crown']}];
@@ -2035,7 +2045,7 @@ function netLost(p){
 function netOpenPanel(){$('menu').hidden=true;$('results').hidden=true;$('online').hidden=false;netRender();}
 function netRender(){
   const on=NET.mode!=='off';
-  $('onStart').hidden=on;$('onRoom').hidden=!on;
+  $('onStart').hidden=on;$('onRoom').hidden=!on;$('onHere').hidden=!ON_SITE;$('onOff').hidden=ON_SITE;
   $('onNameTxt').textContent=NET.name;
   const pc=NET.pendingCode;
   $('onJoinLink').hidden=!pc;if(pc)$('onJoinLink').textContent='Join room '+pc;
@@ -2333,7 +2343,7 @@ function netTick(raw){
 /* ---------- entry: invite links and test hooks ---------- */
 (function(){
   const m=/^#([A-Za-z]{4})$/.exec(location.hash||'');
-  if(m&&!NETT){NET.pendingCode=m[1].toUpperCase();setTimeout(()=>netOpenPanel(),0);}
+  if(m&&!NETT&&ON_SITE){NET.pendingCode=m[1].toUpperCase();setTimeout(()=>netOpenPanel(),0);}
   if(NETT){
     if(NETT.role==='host')setTimeout(()=>{netCreate(NETT.code);if(NETT.start){const iv=setInterval(()=>{if(NET.mode!=='host'){clearInterval(iv);return;}if(!NET.inShow&&NET.lobby.length>=NETT.start&&NET.selfId){clearInterval(iv);setTimeout(netHostStart,800);}},200);}},300);
     else if(NETT.role==='join')setTimeout(()=>netJoin(NETT.code),300+(NETT.delay||0));
