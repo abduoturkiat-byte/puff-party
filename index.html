@@ -3472,7 +3472,9 @@ function makeCard(res){
   g.font='400 '+fs+'px '+DISP;g.fillStyle='#ff4fa3';g.fillText(a,fx0,1259);g.font='600 '+fs+'px '+UI;g.fillStyle=GRAPE;g.fillText(b,fx0+ww[0],1259);
   return cv;
 }
-let cardURL=null,cardFile=null,cardMsg='';
+let cardURL=null,cardFile=null,cardMsg='',cardBlob=null,cardDL=null;
+/* Inside the Claude app the page can't download through a link, so it asks the app to save the file. */
+try{if(window.claude&&typeof window.claude.use==='function')window.claude.use('downloads').then(d=>{cardDL=d||null;},()=>{});}catch(e){}
 async function openCard(){
   const res=lastResult||{},btn=$('resShare');btn.disabled=true;
   try{if(document.fonts&&document.fonts.load)await Promise.race([Promise.all([document.fonts.load('400 80px "Titan One"'),document.fonts.load('600 40px Fredoka')]),new Promise(r=>setTimeout(r,1500))]);}catch(e){}
@@ -3481,6 +3483,7 @@ async function openCard(){
   if(!cv){toast('Could not make the card here');return;}
   cardMsg=cardText(res)[0]+' Play Puff Party with me: '+GAME_URL;
   let blob=null;try{blob=await new Promise(r=>cv.toBlob(r,'image/png'));}catch(e){}
+  cardBlob=blob;
   if(cardURL&&cardURL.startsWith('blob:'))URL.revokeObjectURL(cardURL);
   cardURL=blob?URL.createObjectURL(blob):cv.toDataURL('image/png');
   cardFile=null;try{if(blob&&window.File&&navigator.canShare){const f=new File([blob],'puff-party.png',{type:'image/png'});if(navigator.canShare({files:[f]}))cardFile=f;}}catch(e){}
@@ -3494,6 +3497,11 @@ $('cardShare').addEventListener('click',async()=>{
 $('cardCopy').addEventListener('click',()=>{
   const box=$('cardText'),fb=()=>{box.value=cardMsg;box.hidden=false;box.focus();box.select();toast('Select the text and copy it');};
   try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(cardMsg).then(()=>toast('Link copied. Paste it anywhere'),fb);else fb();}catch(e){fb();}
+});
+$('cardSave').addEventListener('click',e=>{
+  if(!cardDL||!cardBlob)return;
+  e.preventDefault();
+  cardDL.save({filename:'puff-party.png',data:cardBlob}).then(r=>{if(r&&r.status==='saved')toast('Saved');},err=>{const c=err&&err.code;if(c==='declined')return;toast(c==='rate_limited'?'One moment, then try again':'Press and hold the picture to save it');});
 });
 $('cardClose').addEventListener('click',()=>{$('cardView').hidden=true;});
 
