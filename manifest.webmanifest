@@ -1,7 +1,7 @@
 {
   "name": "Puff Party",
   "short_name": "Puff Party",
-  "description": "20 marshmallows, 12 sweet rounds, 1 cherry on top. Play alone or online with friends.",
+  "description": "20 marshmallows, 16 sweet rounds, 1 cherry on top. Play alone or online with friends.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
