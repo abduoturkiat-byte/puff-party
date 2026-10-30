@@ -2795,7 +2795,7 @@ function itemTick(h){
   for(const it of L.items){if(!it.avail&&L.t>=it.back){it.avail=true;if(nearCam(it,14))puff(it.x,it.y,it.z,2,0.6);}}
   if(state==='play'){
     if(NET.mode!=='client'){
-      for(const it of L.items){if(!it.avail)continue;for(const c of chars){if(!c.active||c.out||c.done||c.item)continue;const dx=c.x-it.x,dz=c.z-it.z;if(dx*dx+dz*dz<1.21&&c.y>it.y-1.75&&c.y<it.y+0.45){pickItem(it,c,rollItem(c));break;}}}
+      for(const it of L.items){if(!it.avail)continue;for(const c of chars){if(!c.active||c.out||c.done||c.item||c.puppet)continue;const dx=c.x-it.x,dz=c.z-it.z;if(dx*dx+dz*dz<1.21&&c.y>it.y-1.75&&c.y<it.y+0.45){pickItem(it,c,rollItem(c));break;}}}
     }else if(player.inRound&&!player.out&&!player.item&&L.t>=(NET.pickT||0)){
       for(const it of L.items){if(!it.avail)continue;const dx=player.x-it.x,dz=player.z-it.z;if(dx*dx+dz*dz<1.21&&player.y>it.y-1.75&&player.y<it.y+0.45){NET.pickT=L.t+0.35;netToHost({k:'pickc',r:NET.rseq,i:it.i});break;}}
     }
@@ -3878,7 +3878,7 @@ function netHostEv(p,m){
   else if(m.k==='tile'){const s=L.sqTiles&&L.sqTiles[m.i|0];if(s&&state==='play')bridgeStep(c,s);}
   else if(m.k==='hx'){const s=L.tiles&&L.tiles[m.i|0];if(s&&state==='play')hexStep(c,s);}
   else if(m.k==='cupc'){const M=L.mc,cp=M&&M.cups[m.i|0];if(cp&&state==='play'&&M.phase==='grab'&&cp.up&&!cp.owner&&!c.out&&Math.hypot(c.x-cp.x,c.z-cp.z)<1.8)cupClaim(cp,c);}
-  else if(m.k==='pickc'){const it=L.items&&L.items[m.i|0];if(it&&it.avail&&state==='play'&&!c.out&&!c.item&&Math.hypot(c.x-it.x,c.z-it.z)<2.4)pickItem(it,c,rollItem(c));}
+  else if(m.k==='pickc'){const it=L.items&&L.items[m.i|0];if(it&&it.avail&&state==='play'&&!c.out&&Math.hypot(c.x-it.x,c.z-it.z)<2.4)pickItem(it,c,rollItem(c));}
   else if(m.k==='gumc'){const b=chars[m.b|0];if(b&&b!==c&&state==='play'&&!c.out&&L.gums)throwGum(c,b);}
   else if(m.k==='tagc'){const b=chars[m.b|0];if(L.tag&&state==='play'&&c.taffy&&c.tagCD<=0&&b&&b!==c&&b.inRound&&b.active&&!b.out&&!b.taffy&&b.immuneT<=0&&Math.hypot(b.x-c.x,b.z-c.z)<2.2)passTaffy(c,b);}
 }
