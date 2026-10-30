@@ -1,7 +1,7 @@
 {
   "name": "Puff Party",
   "short_name": "Puff Party",
-  "description": "20 marshmallows, 5 wobbly rounds, 1 crown. Play alone or online with friends.",
+  "description": "20 marshmallows, 12 sweet rounds, 1 cherry on top. Play alone or online with friends.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
@@ -9,7 +9,17 @@
   "background_color": "#4fb3ff",
   "theme_color": "#4fb3ff",
   "icons": [
-    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }
