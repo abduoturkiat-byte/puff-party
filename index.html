@@ -667,6 +667,60 @@ const ICON_MAT=atlasMat(SWEET_TEX,'iconOff','vec2(0.25,0.5)',25,ICON_G);
 const hudTarget=$('hudTarget'),hudTargetCtx=hudTarget.getContext('2d');
 function drawSweetHud(k){hudTargetCtx.clearRect(0,0,88,88);drawSweet(hudTargetCtx,k,44,46,0.34);}
 
+/* ================= analytics: anonymous counts only =================
+   Umami Cloud, which uses no cookies. Nothing that points to a player is sent: no ids, no names,
+   no room codes, no typed text. Only things like "a round of Mixer Bowl ended with an elimination".
+   Returning players are counted from this device's own memory: once a day it sends how many days
+   it has been since the first visit. It only runs on the real site, and only once ANALYTICS_ID is set. */
+const ANALYTICS_ID='';
+const AN_TEST=AUTO&&window.__anTest===true;
+const AN_ON=AN_TEST||(!!ANALYTICS_ID&&!AUTO&&/(^|\.)abduoturkiat-byte\.github\.io$/.test(location.hostname));
+const anQ=[];let anReady=false;
+function track(name,data){
+  if(!AN_ON)return;
+  data=data||{};
+  try{
+    if(AN_TEST){(window.__anLog=window.__anLog||[]).push([name,data]);return;}
+    if(anReady&&window.umami&&typeof window.umami.track==='function')window.umami.track(name,data);
+    else if(anQ.length<40)anQ.push([name,data]);
+  }catch(e){}
+}
+function anMode(){return NET.mode!=='off'?'online':RUN;}
+function anBucket(n,cuts,labels){for(let i=0;i<cuts.length;i++)if(n<=cuts[i])return labels[i];return labels[labels.length-1];}
+if(AN_ON){
+  if(!AN_TEST)try{
+    const s=document.createElement('script');s.defer=true;s.src='https://cloud.umami.is/script.js';
+    s.setAttribute('data-website-id',ANALYTICS_ID);s.setAttribute('data-domains','abduoturkiat-byte.github.io');
+    s.onload=()=>{anReady=true;const q=anQ.splice(0);for(const e of q)track(e[0],e[1]);};
+    document.head.appendChild(s);
+  }catch(e){}
+  /* one "day" ping per device per calendar day: a new player, or how long since the first visit */
+  try{
+    const day=Math.floor((Date.now()-new Date().getTimezoneOffset()*60000)/86400000);
+    const first=parseInt(load('pp.an.first','0'),10)||0,last=parseInt(load('pp.an.last','0'),10)||0;
+    if(last!==day){
+      save('pp.an.last',String(day));
+      if(!first){save('pp.an.first',String(day));track('day',{since:'new'});}
+      else track('day',{since:anBucket(day-first,[1,6,29],['d1','d2-6','d7-29','d30+'])});
+    }
+  }catch(e){}
+}
+/* a show starts: which mode, and how many shows this device has played */
+function anShow(){
+  if(!AN_ON)return;
+  const n=(parseInt(load('pp.an.shows','0'),10)||0)+1;save('pp.an.shows',String(n));
+  const d={mode:anMode(),nth:anBucket(n,[1,2,5,20],['1','2','3-5','6-20','21+'])};
+  if(RUN==='adventure'&&NET.mode==='off')d.level=ADV.sel+1;
+  track('show',d);
+}
+/* frame rate once per visit, after a minute of play, to see how weaker phones cope */
+let anFpsT=0,anFpsN=0,anFpsSum=0,anFpsSent=false;
+function anFps(f,dt){
+  if(!AN_ON||anFpsSent)return;
+  anFpsT+=dt;anFpsN++;anFpsSum+=f;
+  if(anFpsT>=60){anFpsSent=true;const a=anFpsSum/anFpsN;track('fps',{avg:anBucket(a,[24,35,45,55],['<25','25-35','35-45','45-55','55+']),res:String(pixelRatio)});}
+}
+
 /* ================= characters ================= */
 /* A soft, pillowy marshmallow: rounded edges, a slight barrel bulge, a lighter top. */
 const MR=0.46,MH=0.98,MCR=0.27,MBULGE=0.012;
@@ -4139,6 +4193,7 @@ function startGame(){
   else if(RUN==='teams'){teamSetup();show=shuffle(['jar','paint','zone']);curSlots=[0,1,2].map(()=>({label:'Team',d:2,keep:1}));}
   else if(RUN==='adventure'){if(!advOpen(ADV.sel))ADV.sel=0;show=[advLevel().key];curSlots=[{label:ADV_WORLDS[Math.floor(ADV.sel/3)],d:advD(),keep:1}];chars.forEach(c=>{c.alive=c.isPlayer;});ITEMS_ON=false;}
   else curSlots=SLOTS;
+  anShow();
   beginRound(0);
 }
 function beginRound(i){
@@ -4176,6 +4231,7 @@ function roundIntro(i,sl){
 function endRound(res){
   if(state!=='play')return;
   state='end';stateT=0;lastResult=res;
+  track('round',{mode:anMode(),key:R.key,n:roundIdx+1,res:res.spect?'watch':(res.win?'win':(res.ok?'ok':'out'))});
   for(const c of chars){c.inX=c.inZ=0;c.wantJump=c.wantDive=false;if(c.inRound)c.alive=!!c.qualified;}
   controlsVisible(false);$('skip').hidden=true;
   if(NET.mode==='host')netHostEnd(res);
@@ -4423,6 +4479,7 @@ function advEnd(res){
   const after=advStars(),unl=[];for(const k in HAT_STAR)if(before<HAT_STAR[k]&&after>=HAT_STAR[k])unl.push(k);
   res.adv={st,prev,got,all,time:roundTime,gain,unl,best,out:player.out};res.final=true;
   log('adv',lv.key,'stars='+st,'coins='+got+'/'+all,'t='+roundTime.toFixed(1));
+  track('adv',{level:i+1,stars:st,coins:got});
 }
 function advNextHat(){const n=advStars();let o=null;for(const k in HAT_STAR)if(n<HAT_STAR[k]&&(!o||HAT_STAR[k]<HAT_STAR[o]))o=k;return o;}
 /* ---- level picker: a 3 by 3 grid, one row per world ---- */
@@ -4575,7 +4632,7 @@ function tickQuality(dt){
   if(state!=='play'){qN=0;qT=0;return;}
   if(qSkip>0){qSkip-=dt;return;}
   qN++;qT+=dt;
-  if(qT>=2){const f=qN/qT;qN=0;qT=0;if(f<50&&qLevel<qSteps().length-1){qLevel++;applyQuality();log('quality',qLevel,f.toFixed(1),'pr',pixelRatio);}}
+  if(qT>=2){const f=qN/qT;anFps(f,qT);qN=0;qT=0;if(f<50&&qLevel<qSteps().length-1){qLevel++;applyQuality();log('quality',qLevel,f.toFixed(1),'pr',pixelRatio);}}
 }
 const elFps=$('fps');let fpsOn=load('mm.fps','1')!=='0',fpsN=0,fpsT=0;
 function paintFps(){$('fpsBtn').textContent='FPS: '+(fpsOn?'On':'Off');elFps.hidden=!fpsOn;}
@@ -4678,7 +4735,7 @@ function tryBuy(cat,id){
   const need=starNeed(cat,id);if(need){shopBuy='';shopNote('Win '+need+' stars in Adventure mode to get this hat. You have '+advStars()+'.',true);SFX.thud();return false;}
   if(COINS<p){shopNote('You need '+(p-COINS)+' more coins. Play shows to earn them!',true);SFX.thud();shopBuy='';return false;}
   if(shopBuy!==key){shopBuy=key;shopNote('Tap again to buy for '+p+' coins.');return false;}
-  addCoins(-p);OWN.add(key);saveOwn();shopBuy='';SFX.coin();shopNote('Unlocked! Enjoy your new style.',true);burstConfetti(player.x,player.y+1.2,player.z,30);return true;
+  addCoins(-p);OWN.add(key);saveOwn();shopBuy='';SFX.coin();track('buy',{item:key});shopNote('Unlocked! Enjoy your new style.',true);burstConfetti(player.x,player.y+1.2,player.z,30);return true;
 }
 function chip(label,cat,id,on,onTap){
   const b=document.createElement('button'),own=owned(cat,id),buying=shopBuy===cat+':'+id;
@@ -4728,7 +4785,7 @@ $('shuffle').addEventListener('click',()=>{show=rollShow();setupMenu();});
 $('resBtn').addEventListener('click',onResBtn);
 /* back to the main menu from the results or the pause screen (offline shows) */
 let paused=false;
-function toMainMenu(){paused=false;$('pausePanel').hidden=true;$('cardView').hidden=true;$('pauseBtn').hidden=true;musicHold(false);show=rollShow();setupMenu();}
+function toMainMenu(){if(NET.mode==='off'&&(state==='intro'||state==='count'||state==='play'||state==='end'||(state==='results'&&lastResult&&lastResult.ok&&!lastResult.final)))track('quit',{mode:anMode(),key:R.key,n:roundIdx+1,at:state});paused=false;$('pausePanel').hidden=true;$('cardView').hidden=true;$('pauseBtn').hidden=true;musicHold(false);show=rollShow();setupMenu();}
 function setPaused(p){if(NET.mode!=='off'||(p&&state!=='play'&&state!=='count'&&state!=='intro'))return;paused=p;$('pausePanel').hidden=!p;if(p){musicHold(true);controlsVisible(false);}else{musicHold(false);controlsVisible(state==='play');}}
 $('resMenu').addEventListener('click',()=>{ensureAudio();toMainMenu();});
 $('resRetry').addEventListener('click',()=>{ensureAudio();if(state==='results'&&NET.mode==='off'&&RUN==='adventure')startGame();});
@@ -4830,7 +4887,7 @@ function modeMenu(){
 }
 function setMode(m){
   if(MODES.indexOf(m)<0||state!=='menu')return;
-  const was=MODE;MODE=m;save('pp.mode',m);
+  const was=MODE;MODE=m;save('pp.mode',m);if(was!==m)track('mode',{m});
   if(m==='daily'){show=dailyShow();setupMenu();}else if(m==='adventure'){show=[advLevel().key];setupMenu();}else if(was==='daily'||was==='adventure'){show=rollShow();setupMenu();}else modeMenu();
 }
 document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>{ensureAudio();SFX.pop(0.5);setMode(b.dataset.mode);}));
@@ -4999,14 +5056,15 @@ async function openCard(){
   $('cardView').hidden=false;SFX.pop(1);
 }
 $('cardShare').addEventListener('click',async()=>{
-  if(!cardFile)return;
+  if(!cardFile)return;track('share',{how:'share'});
   try{await navigator.share({files:[cardFile],text:cardMsg});}catch(e){if(!e||e.name!=='AbortError')toast('Sharing is blocked here. Save the picture instead');}
 });
-$('cardCopy').addEventListener('click',()=>{
+$('cardCopy').addEventListener('click',()=>{track('share',{how:'copy'});
   const box=$('cardText'),fb=()=>{box.value=cardMsg;box.hidden=false;box.focus();box.select();toast('Select the text and copy it');};
   try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(cardMsg).then(()=>toast('Link copied. Paste it anywhere'),fb);else fb();}catch(e){fb();}
 });
 $('cardSave').addEventListener('click',e=>{
+  track('share',{how:'save'});
   if(!cardDL||!cardBlob)return;
   e.preventDefault();
   cardDL.save({filename:'puff-party.png',data:cardBlob}).then(r=>{if(r&&r.status==='saved')toast('Saved');},err=>{const c=err&&err.code;if(c==='declined')return;toast(c==='rate_limited'?'One moment, then try again':'Press and hold the picture to save it');});
@@ -5215,7 +5273,7 @@ function netCreate(code){
   if(NET.mode!=='off')return;
   NET.mode='host';NET.code=code||netCode();NET.hostId='';NET.mySlot=0;NET.inShow=false;NET.err='';NET.pendingCode='';NET.rseq=0;
   NET.lobby=[{slot:0,id:'',name:NET.name,color:SKIN.color,hat:SKIN.hat,trail:SKIN.trail,host:true,wait:false}];
-  NET.status='Opening the room…';netOpenPanel();
+  NET.status='Opening the room…';netOpenPanel();track('online',{act:'host'});
   netOpen(NET.code).then(()=>{if(NET.mode!=='host')return;NET.lobby[0].id=NET.selfId;NET.status='The room is open. Invite friends, then tap Start. Bots fill the empty spots.';netRender();})
     .catch(e=>netFail('Online play could not start on this page. '+((e&&e.message)||'')));
 }
@@ -5224,7 +5282,7 @@ function netJoin(code){
   if(NET.mode!=='off')return;
   if(code.length!==4){NET.err='Room codes have 4 letters.';netOpenPanel();return;}
   NET.mode='client';NET.code=code;NET.hostId='';NET.mySlot=-1;NET.inShow=false;NET.err='';NET.pendingCode='';NET.lobby=[];NET.rseq=0;
-  NET.status='Looking for room '+code+'…';netOpenPanel();
+  NET.status='Looking for room '+code+'…';netOpenPanel();track('online',{act:'join'});
   netOpen(code).catch(e=>netFail('Online play could not start on this page. '+((e&&e.message)||'')));
 }
 function netLeave(){netClose();netReset('');}
