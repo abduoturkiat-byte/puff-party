@@ -40,6 +40,10 @@ Pick a mode on the main menu:
   Frosting Paint (turn the floor your colour) and Sprinkle Zone (hold the glowing zone).
 - **Boss**: all 20 marshmallows against the Gummy King. Jump his shockwaves, dodge the gumdrops
   and his licorice whip, and stand on the glowing plates to fire the cannons at him.
+- **Adventure**: nine levels in three candy worlds (Candy Meadow, Choco Mountain, Sugar Sky), just
+  for you. Each level has three stars: finish (or survive), beat the par time (or grab 3 gold
+  coins), and grab all 5 gold coins. A star opens the next level, and stars unlock the Star hat
+  (6 stars) and the Crown (15 stars).
 
 Online, the room host can open **Party settings** to pick which rounds to use, how many rounds a
 show has, and whether power-ups are on.
