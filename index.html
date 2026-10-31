@@ -138,6 +138,9 @@ body{position:relative;background:var(--sky);color:var(--grape);font-family:var(
 a.ghost-btn{display:inline-block;text-decoration:none}
 .pad-btn.item.nudge{animation:nudge .45s ease 3}
 @keyframes nudge{0%,100%{transform:scale(1)}50%{transform:scale(1.28)}}
+.pausebtn{right:calc(max(12px,var(--sr)) + 52px);display:grid;place-items:center;padding:0}
+.pausebtn svg{width:20px;height:20px}
+.pause-card{grid-template-columns:1fr;width:min(360px,calc(100% - 32px))}
 .toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);background:var(--grape);color:#fff;font:600 13px var(--font-ui);padding:9px 16px;border-radius:999px;pointer-events:none;white-space:nowrap}
 button:focus-visible{outline:3px solid var(--lemon);outline-offset:3px}
 .tbar{width:170px;height:10px;box-sizing:border-box;border-radius:999px;background:rgba(255,255,255,.6);border:2px solid var(--grape);overflow:hidden;margin-top:2px}
@@ -233,6 +236,7 @@ a.big-btn{display:inline-block;text-decoration:none}
   <div class="fps" id="fps" hidden>-- FPS</div>
   <div class="feed" id="feed"></div>
   <button class="mute" id="mute" aria-pressed="true" aria-label="Sound and music">&#9834;</button>
+  <button class="mute pausebtn" id="pauseBtn" aria-label="Pause" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.5" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1.5" fill="currentColor"/></svg></button>
   <button class="skip" id="skip" hidden>Skip to results</button>
   <div class="controls" id="controls" hidden>
     <div class="cam-zone" id="camZone"></div>
@@ -272,12 +276,21 @@ a.big-btn{display:inline-block;text-decoration:none}
         <h2 class="head ok" id="resHead">Qualified!</h2>
         <p class="sub" id="resText"></p>
         <p class="res-coins" id="resCoins" hidden><i class="coin"></i><span id="resCoinT">+0 coins</span></p>
-        <div class="res-btns"><button class="big-btn" id="resBtn">Next round</button><button class="ghost-btn" id="resShare" hidden>Share card</button></div>
+        <div class="res-btns"><button class="big-btn" id="resBtn">Next round</button><button class="ghost-btn" id="resShare" hidden>Share card</button><button class="ghost-btn" id="resMenu">Main menu</button></div>
         <p class="res-next" id="resNext" hidden></p>
         <textarea class="sharebox" id="shareBox" rows="2" readonly hidden></textarea>
       </div>
       <div class="col-side">
         <ol class="rounds" id="resRounds" aria-label="Rounds in this show"></ol>
+      </div>
+    </div>
+  </section>
+  <section class="panel" id="pausePanel" hidden>
+    <div class="card pause-card">
+      <div class="col-main">
+        <h2 class="head ok">Paused</h2>
+        <p class="sub" id="pauseSub">Take a breather.</p>
+        <div class="res-btns"><button class="big-btn" id="pauseResume">Resume</button><button class="ghost-btn" id="pauseMenu">Main menu</button></div>
       </div>
     </div>
   </section>
@@ -3842,7 +3855,7 @@ function showResults(){
   const rc=$('resCoins');rc.hidden=!lastCoins;if(lastCoins){$('resCoinT').textContent='+'+lastCoins+' coins';setTimeout(()=>{if(state==='results')SFX.coin();},350);}
   $('resBtn').textContent=(res.ok&&!res.final)?'Next round':'Play again';
   $('resShare').hidden=!!res.spect||!(res.final||!res.ok);
-  $('resBtn').hidden=false;$('resNext').hidden=true;
+  $('resBtn').hidden=false;$('resNext').hidden=true;$('resMenu').hidden=NET.mode!=='off';
   if(NET.mode!=='off')netResultsUI();
   $('results').hidden=false;
   hudVisible(false);
@@ -4169,6 +4182,15 @@ paintStyleDot();
 elPlay.addEventListener('click',()=>{ensureAudio();if(NET.mode!=='off')return;curSlots=SLOTS;startGame();});
 $('shuffle').addEventListener('click',()=>{show=rollShow();setupMenu();});
 $('resBtn').addEventListener('click',onResBtn);
+/* back to the main menu from the results or the pause screen (offline shows) */
+let paused=false;
+function toMainMenu(){paused=false;$('pausePanel').hidden=true;$('cardView').hidden=true;$('pauseBtn').hidden=true;musicHold(false);show=rollShow();setupMenu();}
+function setPaused(p){if(NET.mode!=='off'||(p&&state!=='play'&&state!=='count'&&state!=='intro'))return;paused=p;$('pausePanel').hidden=!p;if(p){musicHold(true);controlsVisible(false);}else{musicHold(false);controlsVisible(state==='play');}}
+$('resMenu').addEventListener('click',()=>{ensureAudio();toMainMenu();});
+$('pauseBtn').addEventListener('click',()=>{ensureAudio();setPaused(true);});
+$('pauseResume').addEventListener('click',()=>{ensureAudio();setPaused(false);});
+$('pauseMenu').addEventListener('click',()=>{ensureAudio();toMainMenu();});
+document.addEventListener('keydown',e=>{if(e.code==='Escape'||e.code==='KeyP'){if(paused)setPaused(false);else setPaused(true);}});
 $('resShare').addEventListener('click',()=>{ensureAudio();openCard();});
 $('skip').addEventListener('click',()=>{
   if(state!=='play'||R.kind!=='race'||NET.mode!=='off')return;
@@ -5124,9 +5146,10 @@ function frame(now){
   const raw=Math.max(0,(now-last)/1000),real=Math.min(raw,0.05);last=now;
   const sk=slowT>0?0.3:1;if(slowT>0)slowT-=real;
   const dt=real*TSCALE*sk,steps=Math.max(1,Math.ceil(dt/(1/60)));
-  for(let i=0;i<steps;i++)step(dt/steps);
+  if(!paused)for(let i=0;i<steps;i++)step(dt/steps);
   if(NET.mode!=='off')netTick(raw);
-  render(real*sk,Math.min(raw,1));
+  const pb=NET.mode==='off'&&(state==='play'||state==='count'||state==='intro');if(pb===$('pauseBtn').hidden)$('pauseBtn').hidden=!pb;
+  render(paused?0:real*sk,Math.min(raw,1));
   requestAnimationFrame(frame);
 }
 try{const hot=window.claude&&window.claude.hot;if(hot&&typeof hot.snapshot==='function')hot.snapshot(()=>({wins}));}catch(e){}
