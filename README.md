@@ -36,6 +36,8 @@ Pick a mode on the main menu:
 - **Chaos**: every round gets a random twist: low gravity, butter floors, lights out, giants, tiny
   marshmallows, a sugar rush or wind.
 - **Endless**: round after round, each one harder, until you are out. Beat your best.
+- **Boss**: all 20 marshmallows against the Gummy King. Jump his shockwaves, dodge the gumdrops
+  and his licorice whip, and stand on the glowing plates to fire the cannons at him.
 
 Online, the room host can open **Party settings** to pick which rounds to use, how many rounds a
 show has, and whether power-ups are on.

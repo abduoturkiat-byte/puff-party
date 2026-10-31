@@ -148,6 +148,9 @@ a.ghost-btn{display:inline-block;text-decoration:none}
 .pt-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font:600 15px var(--font-ui);color:var(--grape)}
 .pt-row b{min-width:1.4em;text-align:center;font:400 20px var(--font-display)}
 .pt-rounds .mode{font-size:12px;padding:3px 10px}
+.bossbar{position:absolute;left:50%;top:calc(max(15%,86px) + 26px);transform:translateX(-50%);width:min(340px,60%);display:flex;align-items:center;gap:8px;font:400 15px var(--font-display);color:#fff;text-shadow:var(--stroke-thin);pointer-events:none}
+.bossbar i{flex:1;height:14px;border:3px solid var(--grape);border-radius:999px;background:var(--paper);overflow:hidden}
+.bossbar b{display:block;height:100%;width:100%;background:linear-gradient(90deg,#8a6bff,#ff4fa3);transition:width .2s}
 .toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);background:var(--grape);color:#fff;font:600 13px var(--font-ui);padding:9px 16px;border-radius:999px;pointer-events:none;white-space:nowrap}
 button:focus-visible{outline:3px solid var(--lemon);outline-offset:3px}
 .tbar{width:170px;height:10px;box-sizing:border-box;border-radius:999px;background:rgba(255,255,255,.6);border:2px solid var(--grape);overflow:hidden;margin-top:2px}
@@ -264,7 +267,7 @@ a.big-btn{display:inline-block;text-decoration:none}
     <div class="card">
       <div class="col-main">
         <h1 class="title"><span class="t1">Puff</span><span class="t2">Party</span></h1>
-        <div class="modes" role="radiogroup" aria-label="Game mode"><button class="tab mode" role="radio" data-mode="classic" aria-checked="true">Classic</button><button class="tab mode" role="radio" data-mode="daily" aria-checked="false">Daily</button><button class="tab mode" role="radio" data-mode="chaos" aria-checked="false">Chaos</button><button class="tab mode" role="radio" data-mode="endless" aria-checked="false">Endless</button></div>
+        <div class="modes" role="radiogroup" aria-label="Game mode"><button class="tab mode" role="radio" data-mode="classic" aria-checked="true">Classic</button><button class="tab mode" role="radio" data-mode="daily" aria-checked="false">Daily</button><button class="tab mode" role="radio" data-mode="chaos" aria-checked="false">Chaos</button><button class="tab mode" role="radio" data-mode="endless" aria-checked="false">Endless</button><button class="tab mode" role="radio" data-mode="boss" aria-checked="false">Boss</button></div>
         <p class="sub" id="menuSub">20 marshmallows, 5 rounds, 1 cherry on top. Every show mixes 5 of 16 rounds, and each one is harder than the last.</p>
         <div class="play-row"><button class="big-btn" id="play">Play</button><button class="big-btn alt" id="playOnline">Play online</button></div>
         <p class="keys">Move with the joystick, drag the right side to turn the camera, tap Jump and Dive. Grab a wrapped candy for a power-up. Keyboard: WASD or arrows, Space, Shift, X for power-ups, Q and E to turn.</p>
@@ -370,6 +373,7 @@ a.big-btn{display:inline-block;text-decoration:none}
       </div>
     </div>
   </section>
+  <div class="bossbar" id="bossBar" hidden><span>Gummy King</span><i><b id="bossHP"></b></i></div>
   <div class="caster" id="caster" style="opacity:0" aria-live="polite"><span class="cav" aria-hidden="true"><svg viewBox="0 0 40 40"><rect x="7" y="6" width="26" height="30" rx="11" fill="#fff" stroke="#3b1f6e" stroke-width="3"/><path d="M9 11q11-9 22 0" fill="none" stroke="#ff4fa3" stroke-width="4" stroke-linecap="round"/><circle cx="15.5" cy="20" r="2.4" fill="#3b1f6e"/><circle cx="24.5" cy="20" r="2.4" fill="#3b1f6e"/><path d="M15 26q5 5 10 0" fill="#ff4fa3" stroke="#3b1f6e" stroke-width="2.4" stroke-linejoin="round"/><circle cx="12" cy="25" r="2" fill="#ffb3d1"/><circle cx="28" cy="25" r="2" fill="#ffb3d1"/></svg></span><span class="ctext" id="casterText"></span></div>
   <div class="toast" id="toast" hidden></div>
 </div>
@@ -846,7 +850,7 @@ function disposeLevel(l){
   l.group.traverse(kill);if(l.crown)l.crown.grp.traverse(kill);
 }
 function newLevel(){
-  if(L)disposeLevel(L);
+  if(L)disposeLevel(L);$('bossBar').hidden=true;
   L={t:0,bumpers:[],tramps:[],draws:[],group:new T.Group(),surfaces:[],walls:[],cyls:[],bars:[],balls:[],belts:[],doorRows:[],decor:[],pools:{},ticks:[],sqGrids:[],sqTiles:null,hexMap:null,tiles:null,pushers:null,cps:null,crown:null,boulders:null,finishZ:null,finishY:-1,finishCount:0,park:null,spawnZ:1.4,spawnY:0};
   scene.add(L.group);return L;
 }
@@ -3554,6 +3558,157 @@ function thinkFountain(c,dt){
   stuck(c,dt);
 }
 
+/* ================= mode: Boss fight =================
+   All 20 marshmallows against the Gummy King. He slams the ground (jump the shockwave), rains
+   gumdrops (watch the shadows) and, when he gets angry, sweeps a licorice whip across the cake.
+   Four candy cannons stand around the edge: stand on a cannon's plate to charge it, and when it
+   fires it hits the King. Knock his health to zero before time runs out. Single-player only. */
+const BOSS_Z=-19,BOSS_HP=100,PLATE_R=1.35;
+const BOSS_PLATES=[[0,9.6],[-9.6,0],[9.6,0],[0,-8.6]];
+function buildBoss(lv){
+  newLevel();
+  const mat=ownMat(new T.MeshToonMaterial({map:TEX.cake2,gradientMap:gradMap}));
+  const top=new T.Mesh(new T.CylinderGeometry(12.5,12.2,2.4,64),[toon('#ffd6ea'),mat,toon('#ffd6ea')]);top.position.y=-1.2;L.group.add(top);
+  L.surfaces.push({kind:'disc',cx:0,cz:0,r:12.5,top:0,bottom:-2.4});
+  deco(new T.TorusGeometry(12.5,0.3,10,96),toon('#ffffff'),0,0.02,0).rotation.x=Math.PI/2;
+  deco(new T.CylinderGeometry(15,15.4,3,64),toon('#d9c6ff'),0,-4,0);
+  /* the King on his own pedestal */
+  const B=makeGummyBear();B.g.position.set(0,0,BOSS_Z);B.g.scale.setScalar(2.4);L.group.add(B.g);B.gm.opacity=0;B.gaze.visible=false;
+  B.g.traverse(o=>{if(o.isMesh&&o.material&&o.material.color){const h=o.material.color.getHex();if(h===0xff5a7e)o.material.color.set(0x8a6bff);else if(h===0xffa6bd)o.material.color.set(0xc9bbff);}});
+  const gold=toon('#ffd23f'),crown=new T.Group();crown.position.set(0,8.9,0);B.g.add(crown);
+  crown.add(new T.Mesh(new T.CylinderGeometry(1.25,1.15,0.9,20,1,true),gold));
+  for(let k=0;k<6;k++){const a=k/6*TAU,s=new T.Mesh(new T.ConeGeometry(0.28,0.7,10),gold);s.position.set(Math.cos(a)*1.15,0.75,Math.sin(a)*1.15);crown.add(s);const gem=new T.Mesh(new T.SphereGeometry(0.16,10,8),toon(k%2?'#ff4fa3':'#19d3c5'));gem.position.set(Math.cos(a)*1.2,0.05,Math.sin(a)*1.2);crown.add(gem);}
+  deco(new T.CylinderGeometry(7,8,6,40),toon('#ff9fcf'),0,-3,BOSS_Z);
+  /* licorice whip, held out to his side */
+  const whip=new T.Group();whip.position.set(0,0.45,BOSS_Z+3);L.group.add(whip);
+  const rope=new T.Mesh(new T.CylinderGeometry(0.28,0.28,30,10),ownMat(new T.MeshToonMaterial({color:0xe0244e,gradientMap:gradMap})));rope.rotation.z=Math.PI/2;rope.position.x=15;whip.add(rope);whip.visible=false;
+  /* cannons and their plates */
+  const plates=BOSS_PLATES.map((p,i)=>{
+    const s={kind:'disc',cx:p[0],cz:p[1],r:PLATE_R,top:0.06,bottom:-0.4,plate:i};L.surfaces.push(s);
+    const pad=new T.Mesh(new T.CylinderGeometry(PLATE_R,PLATE_R,0.12,28),ownMat(new T.MeshToonMaterial({color:0xffd23f,gradientMap:gradMap})));pad.position.set(p[0],0.0,p[1]);L.group.add(pad);
+    const ring=new T.Mesh(new T.TorusGeometry(PLATE_R+0.1,0.09,8,40),ownMat(new T.MeshBasicMaterial({color:0xffffff})));ring.rotation.x=Math.PI/2;ring.position.set(p[0],0.08,p[1]);L.group.add(ring);
+    const d=Math.hypot(p[0],p[1]-BOSS_Z),gx=p[0]*1.18,gz=p[1]*1.18+(p[1]<0?0:0),can=new T.Group();can.position.set(p[0]*1.18,0,p[1]*1.18);L.group.add(can);
+    const barrel=new T.Mesh(new T.CylinderGeometry(0.55,0.75,2.4,18),toon('#7a5ae0'));barrel.rotation.x=Math.PI/2;barrel.position.y=1.3;can.add(barrel);
+    can.add(new T.Mesh(new T.CylinderGeometry(0.9,1.1,0.9,18),toon('#3b1f6e')));
+    can.lookAt(0,0,BOSS_Z);L.cyls.push({cx:p[0]*1.18,cz:p[1]*1.18,r:1.0,y0:-1,y1:2});
+    return {i,x:p[0],z:p[1],s,pad,ring,can,barrel,charge:0,cool:0,n:0};
+  });
+  const rng=seededRng(Math.floor(RNGF()*2147483647));
+  L.boss={B,crown,whip,plates,hp:BOSS_HP,shown:BOSS_HP,flash:0,act:null,next:3.5,waves:[],drops:[],shots:[],rng,dead:false,deadT:0,lv,roar:0,
+    fpD:lfpool(BALL_G,MAT_GUM,40,true),fpR:lfpool(RING_G,RING_MAT,60,true),fpW:lfpool(new T.CylinderGeometry(1,1,0.7,72,1,true),ownMat(new T.MeshBasicMaterial({color:0xff4fa3,transparent:true,opacity:0.55,side:T.DoubleSide,depthWrite:false})),12,false),fpS:lfpool(BALL_G,MAT_GUM,8,true)};
+  L.ticks.push(bossTick);L.draws.push(bossDraw);
+  $('bossBar').hidden=false;$('bossHP').style.width='100%';
+  addDecor(ringSpots(12,18,26,0,9));
+}
+function spawnBoss(list){const n=list.length;list.forEach((c,i)=>{const a=i/n*TAU+rand(-0.1,0.1),r=rand(3,8);placeChar(c,Math.cos(a)*r,0,Math.sin(a)*r+2,Math.PI);});}
+function bossPhase(){const b=L.boss;return b.hp>66?1:(b.hp>33?2:3);}
+/* attacks */
+function bossSlam(n){const b=L.boss;b.act={k:'slam',t0:roundTime,n,fired:0};}
+function bossRain(){const b=L.boss,ph=bossPhase(),cnt=6+ph*3;b.act={k:'rain',t0:roundTime};for(let i=0;i<cnt;i++){const a=b.rng()*TAU,r=Math.sqrt(b.rng())*11.3;b.drops.push({x:Math.cos(a)*r,z:Math.sin(a)*r,t:roundTime+1.2+i*0.16+b.rng()*0.4,r:1.35,hit:false,col:CANDY_COLS[i%CANDY_COLS.length]});}}
+function bossWhip(){const b=L.boss;b.act={k:'whip',t0:roundTime,dir:b.rng()<0.5?1:-1};}
+function bossTick(h){
+  const b=L.boss,rt=roundTime,play=state==='play',B=b.B;
+  if(b.flash>0)b.flash-=h;
+  b.shown+=(b.hp-b.shown)*Math.min(1,h*6);$('bossHP').style.width=Math.max(0,b.shown)+'%';
+  /* idle sway, hit flinch, defeat */
+  if(b.dead){b.deadT+=h;B.g.rotation.x=-Math.min(1.45,b.deadT*1.4);B.g.position.y=-Math.min(3,b.deadT*1.5);return;}
+  B.g.rotation.z=Math.sin(time*1.3)*0.04;B.g.rotation.x=b.flash>0?-0.18:0;
+  B.eyes.forEach(e=>e.scale.setScalar(b.roar>0?1.5:1));if(b.roar>0)b.roar-=h;
+  /* plates charge while someone stands on them; a charged cannon fires at the King */
+  for(const p of b.plates){
+    p.n=0;if(play)for(const c of chars){if(c.active&&!c.out&&Math.hypot(c.x-p.x,c.z-p.z)<PLATE_R&&c.y<0.6)p.n++;}
+    if(p.cool>0){p.cool-=h;p.charge=0;}else if(play&&p.n>0){p.charge+=h/4*(1+0.5*(p.n-1));if(p.charge>=1){p.charge=0;p.cool=9;bossFire(p);}}else p.charge=Math.max(0,p.charge-h*0.5);
+    p.pad.material.color.set(p.cool>0?0x9a8fb8:(p.charge>0?0xff4fa3:0xffd23f));p.pad.scale.y=1+p.charge*1.5;
+  }
+  for(const s of b.shots){s.t+=h;if(!s.hit&&s.t>=s.d){s.hit=true;bossHurt(6);}}
+  b.shots=b.shots.filter(s=>s.t<s.d+0.2);
+  if(!play)return;
+  /* pick the next attack */
+  if(!b.act&&rt>=b.next){const ph=bossPhase(),r=b.rng();if(ph>=2&&r<0.33)bossWhip();else if(r<0.66)bossSlam(ph>=3?3:(ph>=2?2:1));else bossRain();}
+  const a=b.act;
+  if(a){
+    const e=rt-a.t0;
+    if(a.k==='slam'){
+      const per=1.3;const k=Math.floor(e/per),u=e-k*per;
+      B.g.position.y=u<0.7?Math.sin(u/0.7*Math.PI/2)*1.8:Math.max(0,1.8-(u-0.7)*12);
+      if(u>0.85&&a.fired<=k&&k<a.n){a.fired=k+1;b.waves.push({t0:rt,sp:8.5+bossPhase()*1.2});camShake=Math.max(camShake,0.3);SFX.thump();puff(0,0.3,BOSS_Z+6,6,1.6);}
+      if(e>a.n*per+0.4){b.act=null;b.next=rt+bossGap();}
+    }else if(a.k==='rain'){B.g.position.y=Math.abs(Math.sin(e*8))*0.5;if(e>3.2){b.act=null;b.next=rt+bossGap();}}
+    else if(a.k==='whip'){
+      const W=b.whip;W.visible=true;const warn=1.1,sweep=1.5;
+      const st=a.dir>0?0.25:-(Math.PI+0.25),en=a.dir>0?-(Math.PI+0.25):0.25;
+      if(e<warn){W.rotation.y=st;W.position.y=2.5+Math.sin(e*20)*0.15;b.roar=0.2;}
+      else{const u=Math.min(1,(e-warn)/sweep);W.position.y=0.45;W.rotation.y=st+(en-st)*smooth(u);
+        if(u<1)for(const c of chars){if(!c.active||c.out||c.puppet||c.y>0.9||c.hitCD>0)continue;const th=W.rotation.y,ang=-th,dx=c.x-W.position.x,dz=c.z-W.position.z,along=dx*Math.cos(ang)+dz*Math.sin(ang),perp=-dx*Math.sin(ang)+dz*Math.cos(ang);if(along>0&&along<30&&Math.abs(perp)<0.75)knock(c,a.dir*Math.sin(th),a.dir*Math.cos(th),9,8);}
+        if(e>warn+sweep+0.3){W.visible=false;b.act=null;b.next=rt+bossGap();}}
+      if(e<0.05){SFX.warn();showBanner('Whip!','Jump over it',1.1);}
+    }
+  }
+  /* shockwaves */
+  for(const w of b.waves){const r=(rt-w.t0)*w.sp,cz=BOSS_Z+3;w.r=r;
+    for(const c of chars){if(!c.active||c.out||c.puppet||c.hitCD>0||c.y>0.7)continue;const dx=c.x,dz=c.z-cz,d=Math.hypot(dx,dz);if(Math.abs(d-r)<0.55){knock(c,dx/d,dz/d,7.5,7.5);}}}
+  b.waves=b.waves.filter(w=>w.r<40);
+  /* gumdrops */
+  for(const d of b.drops){if(!d.hit&&rt>=d.t){d.hit=true;puff(d.x,0.2,d.z,4,1.2);if(Math.hypot(d.x-camLook.x,d.z-camLook.z)<14)SFX.thump();
+    for(const c of chars){if(!c.active||c.out||c.puppet)continue;const dx=c.x-d.x,dz=c.z-d.z,dd=Math.hypot(dx,dz);if(dd<d.r+RC&&c.y<1.5){knock(c,dd>0.05?dx/dd:1,dd>0.05?dz/dd:0,7,6);}}}}
+  b.drops=b.drops.filter(d=>!d.hit||rt-d.t<0.5);
+  /* the end */
+  if(b.hp<=0&&!b.dead){b.dead=true;bossWin();return;}
+  if(rt>=R.timeLimit||countAlive()===0){bossLose();}
+}
+function bossGap(){const ph=bossPhase();return (ph===1?2.6:(ph===2?1.9:1.3))*(0.8+L.boss.rng()*0.5);}
+function bossFire(p){
+  const b=L.boss;b.shots.push({p,t:0,d:1.1,hit:false});
+  SFX.pop(1);puff(p.can.position.x,2,p.can.position.z,6,1.4);
+  if(p.n&&chars.some(c=>c===player&&Math.hypot(c.x-p.x,c.z-p.z)<PLATE_R))cast('bossFire',null,2);
+}
+function bossHurt(n){
+  const b=L.boss;if(b.dead)return;b.hp=Math.max(0,b.hp-n);b.flash=0.35;b.roar=0.5;
+  burstConfetti(0,9,BOSS_Z+2,30);camShake=Math.max(camShake,0.2);
+  const ph=bossPhase();if(ph!==b.ph){if(b.ph)showBanner(ph===2?'He\'s angry!':'Last stand!',ph===2?'Watch out for the whip':'Everything gets faster',1.6);b.ph=ph;}
+}
+function bossWin(){
+  const b=L.boss;showBanner('You beat the Gummy King!','',2.6);SFX.fanfare();burstConfetti(0,10,BOSS_Z+2,140);slowmo(1.2);
+  for(const c of chars){c.qualified=c.inRound&&!c.out;if(c.qualified){c.celebrate=true;}}
+  if(!player.out){const w=(parseInt(load('pp.bossWins','0'),10)||0)+1;save('pp.bossWins',String(w));}
+  endRound({ok:!player.out,win:!player.out,final:true,boss:true,winner:null,n:R.n,q:countAlive(),spect:!player.inRound});
+}
+function bossLose(){
+  for(const c of chars)c.qualified=false;
+  showBanner('The Gummy King wins','',2.4);
+  endRound({ok:false,final:true,boss:true,winner:null,n:R.n,q:0,spect:!player.inRound});
+}
+function bossDraw(){
+  const b=L.boss,rt=roundTime;
+  b.fpD.begin();b.fpR.begin();b.fpW.begin();b.fpS.begin();
+  for(const d of b.drops){
+    if(d.hit)continue;const u=clamp(1-(d.t-rt)/1.2,0,1),y=14*(1-u);
+    TMPM.makeScale(d.r*0.75,d.r*0.65,d.r*0.75);TMPM.setPosition(d.x,y+0.6,d.z);TMPC.set(d.col);b.fpD.put(TMPM,TMPC);
+    const rr=d.r*(0.6+0.4*u);TMPM.makeScale(rr,1,rr);TMPM.setPosition(d.x,0.05,d.z);b.fpR.put(TMPM,u>0.7?RING_RED:RING_PINK);
+  }
+  for(const w of b.waves){if(w.r===undefined||w.r<0.5)continue;TMPM.makeScale(w.r,1,w.r);TMPM.setPosition(0,0.35,BOSS_Z+3);b.fpW.put(TMPM);}
+  for(const s of b.shots){const u=Math.min(1,s.t/s.d),p=s.p.can.position,x=p.x+(0-p.x)*u,z=p.z+(BOSS_Z+2-p.z)*u,y=2+Math.sin(u*Math.PI)*7+u*5;TMPM.makeScale(0.9,0.9,0.9);TMPM.setPosition(x,y,z);TMPC.set('#ff4fa3');b.fpS.put(TMPM,TMPC);}
+  b.fpD.end();b.fpR.end();b.fpW.end();b.fpS.end();
+}
+function thinkBoss(c,dt){
+  if(c.out||c.stun>0||(!c.onGround&&c.launch>0)){c.inX=c.inZ=0;return;}
+  const b=L.boss,ai=c.ai,rt=roundTime;
+  /* jump the shockwave as it arrives */
+  for(const w of b.waves){if(w.r===undefined)continue;const d=Math.hypot(c.x,c.z-(BOSS_Z+3));if(d-w.r>0&&d-w.r<w.sp*(ai.careless?0.08:0.16)&&c.onGround&&Math.random()<(ai.careless?0.7:0.95))c.wantJump=true;}
+  /* jump the whip */
+  const a=b.act;if(a&&a.k==='whip'&&rt-a.t0>1.05&&c.onGround&&!ai.wj){const W=b.whip,ang=-W.rotation.y,dx=c.x-W.position.x,dz=c.z-W.position.z,perp=-dx*Math.sin(ang)+dz*Math.cos(ang);if(Math.abs(perp)<2.4&&Math.random()<(ai.careless?0.6:0.92)){c.wantJump=true;ai.wj=true;}}
+  if(!a||a.k!=='whip')ai.wj=false;
+  /* get out from under gumdrops */
+  let fx=0,fz=0,thr=false;
+  for(const d of b.drops){if(d.hit||d.t-rt>1.2-ai.sreact)continue;const dx=c.x-d.x,dz=c.z-d.z,dd=Math.hypot(dx,dz),R2=d.r+0.9;if(dd<R2){fx+=(dd>0.05?dx/dd:1)*(R2-dd);fz+=(dd>0.05?dz/dd:0)*(R2-dd);thr=true;}}
+  if(thr){const l=Math.hypot(fx,fz)||1;steer(c,clamp(c.x+fx/l*3,-9,9),clamp(c.z+fz/l*3,-9,9),1);return;}
+  /* some bots work the cannons */
+  if(ai.plate===undefined)ai.plate=Math.random()<0.4?Math.floor(Math.random()*4):-1;
+  if(ai.plate>=0){const p=b.plates[ai.plate];if(p.cool>0&&Math.random()<dt*0.5)ai.plate=Math.floor(Math.random()*4);steer(c,p.x,p.z,Math.hypot(p.x-c.x,p.z-c.z)>0.5?1:0);return;}
+  ai.wt-=dt;if(ai.wt<=0||ai.wx===undefined){const an=rand(0,TAU),r=rand(1,8.5);ai.wx=Math.cos(an)*r;ai.wz=Math.sin(an)*r;ai.wt=rand(1.2,2.6);}
+  steer(c,ai.wx,ai.wz,0.6);
+}
+
 /* ================= power-up candies =================
    Mystery candies float around most rounds. Grab one for a random power: Sugar Rush (speed),
    Jelly Spring (three super jumps), Bubble (blocks the next hit) or Sticky Gum (throw it at
@@ -3765,6 +3920,8 @@ RD.cutter={key:'cutter',net:true,title:'Cookie Cutter',kind:'survival',cam:'aren
   desc:t=>'Giant cookie cutters are coming down! Get out of the shadow, or the cutter takes you with the dough. The last '+t+' standing go through.',ovPos:V3(0,21,18),ovLook:V3(0,0,0)};
 RD.fountain={key:'fountain',net:true,title:'Chocolate Fountain',kind:'race',cam:'tower',build:buildFountain,spawn:spawnFountain,think:thinkFountain,update:updateRace,onFall:fountainFall,killY:-1,time:()=>150,tempo:136,
   desc:t=>'Climb the chocolate fountain! The chocolate pushes you to the edge. Hop on the marshmallow stairs to reach the next tier. The first '+t+' to the top go through.',ovPos:V3(0,24,26),ovLook:V3(0,6,0)};
+RD.boss={key:'boss',net:false,title:'Gummy King',kind:'boss',cam:'boss',build:buildBoss,spawn:spawnBoss,think:thinkBoss,update:()=>{},onFall:eliminate,killY:-4,time:()=>150,tempo:150,
+  desc:()=>'Beat the Gummy King together! Jump his shockwaves, dodge the gumdrops, and stand on the glowing plates to fire the cannons.',ovPos:V3(0,15,21),ovLook:V3(0,5,-9)};
 const SLOTS=[
   {label:'Easy',d:1,keep:0.8,pool:['race','piano','rapids','freeze','slide']},
   {label:'Medium',d:2,keep:0.75,pool:['grill','mixer','cutter','piano','tag','cupcakes','slide','chef']},
@@ -3816,6 +3973,7 @@ function startGame(){
   chars.forEach((c,i)=>{c.alive=!(AUTO&&window.__n&&i>=window.__n);});
   if(RUN==='daily'){show=dailyShow();curSlots=SLOTS;DAILY_PRACTICE=dailyDone();}
   else if(RUN==='endless'){show=[];show.push(endlessKey());curSlots=[endlessSlot(0)];}
+  else if(RUN==='boss'){show=['boss'];curSlots=[{label:'Boss',d:4,keep:0}];}
   else curSlots=SLOTS;
   beginRound(0);
 }
@@ -3857,7 +4015,8 @@ function endRound(res){
   if(NET.mode==='host')netHostEnd(res);
   if(res.final||!res.ok){diffAfterShow(res);if(NET.mode==='off')modeShowEnd(res);}
   awardCoins(res);
-  if(res.win)showBanner('You win!','The cherry is yours',2.6);
+  if(res.boss){}
+  else if(res.win)showBanner('You win!','The cherry is yours',2.6);
   else if(res.final&&res.spect)showBanner(res.winner?res.winner+' wins!':'Time is up',res.winner?'They grabbed the cherry':'Nobody reached the cherry',2.4);
   else if(res.spect)showBanner('Round over',res.q+' of '+res.n+' go through',2.2);
   else if(res.final)showBanner('So close!',res.winner?res.winner+' grabbed the cherry':'Time is up',2.4);
@@ -3889,7 +4048,8 @@ function showResults(){
     text.textContent=why[R.key]||'You are out of the show.';
   }
   const rc=$('resCoins');rc.hidden=!lastCoins;if(lastCoins){$('resCoinT').textContent='+'+lastCoins+' coins';setTimeout(()=>{if(state==='results')SFX.coin();},350);}
-  if(res.endless!==undefined){head.className='head '+(res.newBest?'win':'out');head.textContent=res.newBest?'New record!':'Out!';text.textContent='You survived '+res.endless+(res.endless===1?' round':' rounds')+' in Endless mode. Your best: '+ENDLESS_BEST+'. '+text.textContent;}
+  if(res.boss){head.className='head '+(res.win?'win':'out');head.textContent=res.win?'You beat the Gummy King!':(res.ok===false&&L.boss&&L.boss.hp<=0?'He\'s down, but you fell':'The Gummy King won');text.textContent=res.win?(res.q+' marshmallows were still standing at the end. Times you beat him: '+(parseInt(load('pp.bossWins','0'),10)||0)+'.'):(L.boss&&L.boss.hp<=0?'Your team won, but you fell off before the end.':'He had '+Math.ceil(L.boss?L.boss.hp:0)+'% health left. Stand on the glowing plates to fire the cannons!');}
+  else if(res.endless!==undefined){head.className='head '+(res.newBest?'win':'out');head.textContent=res.newBest?'New record!':'Out!';text.textContent='You survived '+res.endless+(res.endless===1?' round':' rounds')+' in Endless mode. Your best: '+ENDLESS_BEST+'. '+text.textContent;}
   else if(res.dailySaved)text.textContent+=' Your Daily #'+dayNum()+' result is saved: '+dailyGrid(DAILY.grid)+'.';
   else if(RUN==='daily'&&(res.final||!res.ok)&&DAILY_PRACTICE)text.textContent+=' (Practice run. Only your first Daily try counts.)';
   $('resBtn').textContent=(res.ok&&!res.final)?'Next round':'Play again';
@@ -3930,6 +4090,7 @@ function updateHUD(){
       if(k==='freeze'&&L.fz&&state==='play'){const fs=freezeState(roundTime);if(fs.k==='watch'||fs.k==='turn'){st='FREEZE!';sb='Don\'t move until the bear turns back';}else if(fs.k==='fake'){st='Careful...';}}}
   }else if(k==='crown'){st='Grab the cherry';sb=fmt(R.timeLimit-roundTime)+' left';}
   else if(k==='chef'&&L.chef){const cm=chefCur();if(player.out)st='Eliminated';else if(cm&&roundTime<cm.t1){st=(cm.real?'Chef says: ':'')+CHEF_LBL[cm.kind]+'!';sb=countAlive()+' alive, top '+R.target+' go through';}else{st='Listen to the chef';sb=countAlive()+' alive, top '+R.target+' go through';}}
+  else if(k==='boss'&&L.boss){st=player.out?'Eliminated':countAlive()+' standing';sb=fmt(Math.max(0,R.timeLimit-roundTime))+' left. Stand on the glowing plates to fire!';}
   else if(k==='stack'&&L.stk){const left=Math.max(0,R.timeLimit-roundTime),n=player.stkN||0;let lead=null;for(const c of chars)if(c.inRound&&c.active&&(!lead||(c.stkN||0)>(lead.stkN||0)))lead=c;st='Your stack: '+n;sb=(lead&&lead.stkN?'Most: '+(lead===player?'you':lead.name)+' ('+lead.stkN+'), ':'')+fmt(left)+' left';}
   else if(k==='memory'&&L.mem){
     const m=L.mem,al=countAlive();
@@ -4245,14 +4406,15 @@ $('skip').addEventListener('click',()=>{
    Classic: the usual 5-round show. Daily: one show a day, the same for everyone, first try counts.
    Chaos: every round gets a random twist. Endless: round after round until you are out.
    Daily, Chaos and Endless are single-player; online shows are always Classic (or a custom party). */
-const MODES=['classic','daily','chaos','endless'];
+const MODES=['classic','daily','chaos','endless','boss'];
 let MODE=(function(){const m=load('pp.mode','classic');return MODES.indexOf(m)>=0?m:'classic';})(),RUN='classic',DAILY_PRACTICE=false;
 if(AUTO&&window.__mode&&MODES.indexOf(window.__mode)>=0)MODE=window.__mode;
 const MODE_INFO={
   classic:'20 marshmallows, 5 rounds, 1 cherry on top. Every show mixes 5 of 16 rounds, and each one is harder than the last.',
   daily:'Today\'s show is the same for everyone in the world. Only your first try counts, so make it good!',
   chaos:'Every round gets a crazy twist: low gravity, butter floors, lights out, giants, wind and more.',
-  endless:'Round after round, each one harder, until you are out. How far can you go?'
+  endless:'Round after round, each one harder, until you are out. How far can you go?',
+  boss:'Team up with 19 marshmallows against the Gummy King! Jump his shockwaves, dodge the gumdrops, and stand on the glowing plates to fire the cannons at him.'
 };
 /* ---- daily ---- */
 const DAY0=Date.UTC(2026,9,31);
@@ -4307,9 +4469,11 @@ function modeMenu(){
   let sub=MODE_INFO[m];
   if(m==='daily')sub+=' '+dailyLine()+'.';else if(m==='endless')sub+=' Your best: '+ENDLESS_BEST+(ENDLESS_BEST===1?' round.':' rounds.');
   $('menuSub').textContent=sub;
-  $('shuffle').hidden=m==='daily'||m==='endless';
-  $('sideTitle').textContent=m==='daily'?'Today\'s show (Daily #'+dayNum()+')':(m==='endless'?'Endless run':'This show');
-  $('menuRounds').hidden=m==='endless';$('endlessNote').hidden=m!=='endless';
+  if(m==='boss'){const w=parseInt(load('pp.bossWins','0'),10)||0;sub+=' Times you beat him: '+w+'.';}
+  $('shuffle').hidden=m==='daily'||m==='endless'||m==='boss';
+  $('sideTitle').textContent=m==='daily'?'Today\'s show (Daily #'+dayNum()+')':(m==='endless'?'Endless run':(m==='boss'?'Boss fight':'This show'));
+  $('menuRounds').hidden=m==='endless'||m==='boss';$('endlessNote').hidden=m!=='endless'&&m!=='boss';
+  if(m==='boss')$('endlessNote').textContent='One big fight. Fall off the cake and you are out. Knock his health to zero before the time runs out and everyone still standing wins.';
   if(m==='endless')$('endlessNote').textContent='Every round is picked at random from all 15 rounds and gets a little harder. Everyone you knocked out comes back each round, but the top spots get fewer. Best: '+ENDLESS_BEST+'.';
 }
 function setMode(m){
@@ -4399,6 +4563,7 @@ function snapPlayer(kind){
 function roundTitle(i){const r=RD[show[i]];return r?r.title:'round '+(i+1);}
 function cardText(res){
   const n=show.length,won=roundIdx;
+  if(res.boss)return res.win?['I beat the Gummy King!','Boss fight in Puff Party']:['The Gummy King got me!','Boss fight in Puff Party'];
   if(res.endless!==undefined){const e=res.endless;return [e>0?'I survived '+e+' round'+(e>1?'s':'')+'!':'Round 1 got me!',res.newBest?'A new Endless record in Puff Party':'Endless mode in Puff Party'];}
   const dl=RUN==='daily'?' (Daily #'+dayNum()+')':'';
   if(res.win)return ['I got the cherry on top!',(wins>1?'That is cherry number '+wins+' for me':'I beat 19 marshmallows')+dl];
@@ -4523,6 +4688,7 @@ const CAST={
   choco:['Chocolate surge! Climb, climb, climb!','The chocolate is coming faster!'],
   cherry:['{n} gets the cherry on top!','What a finish for {n}!'],
   sprinkled:['Sprinkled!','Bonk! Right on the head!'],
+  bossFire:['Fire!','Bullseye!','Take that, King!'],
   cut:['Snip! The cutter got you!','Oops, you were part of the cookie!','Into the cookie jar you go!'],
   stir:['Here comes the spoon!','Stir it up!','Hold on to your sugar cube!'],
   melt:['Your sugar cube is melting!','Jump! The cube is going!','Sugar cubes don\'t last forever!'],
@@ -5112,6 +5278,7 @@ function followPose(outP,outL,dt){
     case 'arena':tx=p.x*0.72;ty=0;tz=p.z*0.72;ay=0.5;az=-1;oy=8.8*k;oz=10.5*k;break;
     case 'freeze':tx=p.x*0.7+p.vx*0.08;ty=py;tz=p.z;ay=3;az=-2;oy=2*k;oz=14*k;break;
     case 'follow':tx=p.x*0.88;ty=0;tz=p.z*0.88;ay=0.5;az=-0.6;oy=7.4*k;oz=8.8*k;break;
+    case 'boss':tx=p.x*0.6;ty=0;tz=p.z*0.55;ay=5.5;az=-6;oy=4.5*k;oz=13*k;break;
     case 'tower':tx=p.x;ty=py;tz=p.z;ay=1.0;az=0;oy=5.6*k;oz=11*k;yo=Math.atan2(p.x,p.z);break;
     default:tx=p.x*0.45;ty=0;tz=p.z*0.4;ay=0;az=-1.6;oy=12.5*k;oz=12.5*k;
   }
