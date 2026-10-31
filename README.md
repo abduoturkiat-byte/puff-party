@@ -26,6 +26,20 @@ Cookie Cutter, Taffy Tag, Musical Cupcakes, Chef Says, Chocolate Fountain, Sprin
 Popcorn Panic, Sugar Cubes, and the final, Cherry Stack: grab the cherries popping out of the
 birthday candles, stack them on your head, and knock them off everyone else's.
 
+## Modes
+
+Pick a mode on the main menu:
+
+- **Classic**: 5 rounds, each harder than the last, then the Cherry Stack final.
+- **Daily**: one show a day, the same for everyone. Only your first try counts, and you can share
+  your result as a row of ticks and crosses.
+- **Chaos**: every round gets a random twist: low gravity, butter floors, lights out, giants, tiny
+  marshmallows, a sugar rush or wind.
+- **Endless**: round after round, each one harder, until you are out. Beat your best.
+
+Online, the room host can open **Party settings** to pick which rounds to use, how many rounds a
+show has, and whether power-ups are on.
+
 ## Power-ups
 
 Wrapped candies float above most rounds. Grab one to get a random power-up, then tap the candy button to use it:
