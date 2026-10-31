@@ -14,16 +14,17 @@ A free party game that runs in the browser. 20 marshmallows, 16 sweet rounds, on
 - Use a power-up: the candy button that shows up after you grab a wrapped candy (or X)
 
 Every show mixes 5 of the 16 rounds, and each one is harder than the last. Finish in the top spots,
-or stay on your feet, to reach the final and grab the cherry on top. Every show earns sugar coins;
+or stay on your feet, to reach the final and build the tallest cherry stack. Every show earns sugar coins;
 tap **Style** on the main menu to spend them on colours, hats, dances and trails.
 
 At the end of a show, tap **Share card** to make a picture of how far you got and send it to friends.
 
 ## Rounds
 
-Obstacle Race, Jelly Bridge, Cocoa Rapids, Gummy Freeze, Frosting Slide, Grill Dash, Whisk Whirl,
-Candy Wall, Taffy Tag, Musical Cupcakes, Sweet Swap, Choco Flood, Sprinkle Storm, Popcorn Panic,
-Cookie Crumble, and the final, Cherry on Top.
+Obstacle Race, Jelly Piano, Cocoa Rapids, Gummy Freeze, Frosting Slide, Grill Dash, Mixer Bowl,
+Cookie Cutter, Taffy Tag, Musical Cupcakes, Chef Says, Chocolate Fountain, Sprinkle Storm,
+Popcorn Panic, Sugar Cubes, and the final, Cherry Stack: grab the cherries popping out of the
+birthday candles, stack them on your head, and knock them off everyone else's.
 
 ## Power-ups
 
