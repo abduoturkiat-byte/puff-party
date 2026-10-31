@@ -36,6 +36,8 @@ Pick a mode on the main menu:
 - **Chaos**: every round gets a random twist: low gravity, butter floors, lights out, giants, tiny
   marshmallows, a sugar rush or wind.
 - **Endless**: round after round, each one harder, until you are out. Beat your best.
+- **Teams**: Pink against Blue in three team rounds: Candy Jar (carry candies to your jar),
+  Frosting Paint (turn the floor your colour) and Sprinkle Zone (hold the glowing zone).
 - **Boss**: all 20 marshmallows against the Gummy King. Jump his shockwaves, dodge the gumdrops
   and his licorice whip, and stand on the glowing plates to fire the cannons at him.
 

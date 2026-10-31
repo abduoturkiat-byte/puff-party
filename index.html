@@ -267,7 +267,7 @@ a.big-btn{display:inline-block;text-decoration:none}
     <div class="card">
       <div class="col-main">
         <h1 class="title"><span class="t1">Puff</span><span class="t2">Party</span></h1>
-        <div class="modes" role="radiogroup" aria-label="Game mode"><button class="tab mode" role="radio" data-mode="classic" aria-checked="true">Classic</button><button class="tab mode" role="radio" data-mode="daily" aria-checked="false">Daily</button><button class="tab mode" role="radio" data-mode="chaos" aria-checked="false">Chaos</button><button class="tab mode" role="radio" data-mode="endless" aria-checked="false">Endless</button><button class="tab mode" role="radio" data-mode="boss" aria-checked="false">Boss</button></div>
+        <div class="modes" role="radiogroup" aria-label="Game mode"><button class="tab mode" role="radio" data-mode="classic" aria-checked="true">Classic</button><button class="tab mode" role="radio" data-mode="daily" aria-checked="false">Daily</button><button class="tab mode" role="radio" data-mode="chaos" aria-checked="false">Chaos</button><button class="tab mode" role="radio" data-mode="endless" aria-checked="false">Endless</button><button class="tab mode" role="radio" data-mode="boss" aria-checked="false">Boss</button><button class="tab mode" role="radio" data-mode="teams" aria-checked="false">Teams</button></div>
         <p class="sub" id="menuSub">20 marshmallows, 5 rounds, 1 cherry on top. Every show mixes 5 of 16 rounds, and each one is harder than the last.</p>
         <div class="play-row"><button class="big-btn" id="play">Play</button><button class="big-btn alt" id="playOnline">Play online</button></div>
         <p class="keys">Move with the joystick, drag the right side to turn the camera, tap Jump and Dive. Grab a wrapped candy for a power-up. Keyboard: WASD or arrows, Space, Shift, X for power-ups, Q and E to turn.</p>
@@ -1107,6 +1107,7 @@ function stepChar(c,dt){
 function knock(c,nx,nz,power,up){
   if(c.inv>0||c.hitCD>0||c.done||c.out)return;
   if(L.stk&&state==='play'&&NET.mode!=='client')stkHit(c);
+  if(L.jar&&state==='play'&&c.carry)jarDrop(c);
   if(c.puppet){if(NET.mode==='host'&&c.remote){c.hitCD=0.6;netSendTo(c.remote,{k:'knock',nx,nz,p:power,u:up});}return;}
   if(c.shieldT>0){shieldPop(c);c.hitCD=0.6;return;}
   c.vx=nx*power;c.vz=nz*power;c.vy=Math.max(c.vy,up);c.onGround=false;c.stun=0.75;c.dive=0;c.getUp=0;c.hitCD=0.6;
@@ -3709,6 +3710,141 @@ function thinkBoss(c,dt){
   steer(c,ai.wx,ai.wz,0.6);
 }
 
+/* ================= mode: Team battle =================
+   Pink against Blue, 10 marshmallows each, over three team rounds. Win two to win the battle.
+   Candy Jar: carry candies to your team's jar; dive into a carrier to make them drop it.
+   Frosting Paint: every tile you run over turns your colour; most tiles wins.
+   Sprinkle Zone: stand in the glowing zone to score; it moves every few seconds.
+   Single-player against bots. */
+const TEAMS=[{name:'Pink',col:'#ff4fa3'},{name:'Blue',col:'#4fb3ff'}],TEAM_C=TEAMS.map(t=>new T.Color(t.col));
+let TSCORE=[0,0];
+function teamSetup(){chars.forEach((c,i)=>{c.team=i%2;});TSCORE=[0,0];}
+function teamRings(fp){fp.begin();for(const c of chars){if(!c.active||c.out)continue;TMPM.makeScale(0.75,1,0.75);TMPM.setPosition(c.x,c.y+0.05,c.z);fp.put(TMPM,TEAM_C[c.team||0]);}fp.end();}
+function teamArena(H){
+  addPlatforms([{x0:-H,x1:H,z0:-H,z1:H,top:0,tex:'cream',th:2.5}]);
+  [[-H-0.35,H+0.35,-H-0.35,-H],[-H-0.35,H+0.35,H,H+0.35],[-H-0.35,-H,-H,H],[H,H+0.35,-H,H]].forEach(w=>{L.walls.push({x0:w[0],x1:w[1],z0:w[2],z1:w[3],y0:-2,y1:1.6});pbox((w[0]+w[1])/2,0.5,(w[2]+w[3])/2,w[1]-w[0],1.0,w[3]-w[2],'#ffffff');});
+}
+function spawnTeams(list){list.forEach(c=>{const side=c.team?-1:1;placeChar(c,rand(-7,7),0,side*rand(5,8.5),c.team?0:Math.PI);});}
+function teamEnd(){
+  const p=L.tp,w=p[0]===p[1]?-1:(p[0]>p[1]?0:1);if(w>=0)TSCORE[w]++;
+  for(const c of chars)if(c.inRound)c.qualified=true;
+  const fin=roundIdx>=show.length-1||TSCORE[0]>=2||TSCORE[1]>=2;
+  log('team round',R.key,'score',p.join('-'),'battle',TSCORE.join('-'));
+  endRound({ok:true,team:true,tw:w,tp:p.slice(),final:fin,win:fin&&TSCORE[0]>TSCORE[1],n:R.n,q:R.n,spect:false});
+}
+function teamFall(c){const side=c.team?-1:1;c.x=rand(-6,6);c.z=side*rand(5,8);c.y=2;c.vx=c.vy=c.vz=0;c.stun=0;c.dive=0;c.getUp=0;c.inv=1;if(c.carry)c.carry=false;if(c===player)SFX.whoosh();}
+function teamHud(){const p=L.tp;return TEAMS[0].name+' '+p[0]+'  :  '+p[1]+' '+TEAMS[1].name;}
+/* ---- Candy Jar ---- */
+const JAR_POS=[[0,9.2],[0,-9.2]];
+function buildJar(lv){
+  newLevel();teamArena(11);
+  JAR_POS.forEach((p,t)=>{
+    const jar=new T.Mesh(new T.CylinderGeometry(1.5,1.3,2.2,28,1,true),ownMat(new T.MeshToonMaterial({color:new T.Color(TEAMS[t].col).lerp(new T.Color('#ffffff'),0.55),gradientMap:gradMap,transparent:true,opacity:0.6,side:T.DoubleSide})));jar.position.set(p[0],1.1,p[1]);L.group.add(jar);
+    deco(new T.TorusGeometry(1.5,0.14,8,40),toon(TEAMS[t].col),p[0],2.2,p[1]).rotation.x=Math.PI/2;
+    L.cyls.push({cx:p[0],cz:p[1],r:1.45,y0:-1,y1:2.2});
+  });
+  L.jar={cand:new Map(),n:0,next:1,fill:[0,0],fpC:lfpool(ITEM_G,MAT_HAT,60,true),fpR:lfpool(RING_G,RING_MAT,24,true),fpJ:lfpool(ITEM_G,MAT_HAT,80,true)};
+  L.tp=[0,0];chars.forEach(c=>{c.carry=false;});
+  L.ticks.push(jarTick);L.draws.push(jarDraw);
+  addDecor(ringSpots(10,17,24,0,7));
+}
+function jarSpawn(x,z){const J=L.jar;if(x===undefined){x=rand(-8.5,8.5);z=rand(-6,6);}J.cand.set(J.n,{i:J.n,x,z,col:CANDY_COLS[J.n%CANDY_COLS.length],t:0});J.n++;}
+function jarDrop(c){if(!c.carry)return;c.carry=false;const a=Math.random()*TAU;jarSpawn(clamp(c.x+Math.cos(a)*1.6,-10,10),clamp(c.z+Math.sin(a)*1.6,-10,10));if(c===player)cast('stackLost',null,2);}
+function jarTick(h){
+  const J=L.jar,play=state==='play';
+  for(const ch of J.cand.values())ch.t+=h;
+  if(!play)return;
+  if(roundTime>=J.next&&J.cand.size<9){J.next=roundTime+rand(0.7,1.3);jarSpawn();}
+  for(const c of chars){
+    if(!c.active||c.out||!c.inRound)continue;
+    if(!c.carry){for(const ch of J.cand.values()){if(Math.hypot(c.x-ch.x,c.z-ch.z)<1.0&&c.y<1){J.cand.delete(ch.i);c.carry=ch.col;if(c===player)SFX.pickup();break;}}}
+    else{const p=JAR_POS[c.team];if(Math.hypot(c.x-p[0],c.z-p[1])<2.3){c.carry=false;L.tp[c.team]++;J.fill[c.team]++;burstConfetti(p[0],2.4,p[1],c===player?40:12);if(c===player||nearCam(c,12))SFX.coin();if(c===player)cast('jarScore',null,1);}}
+  }
+  if(roundTime>=R.timeLimit)teamEnd();
+}
+function jarDraw(){
+  const J=L.jar;J.fpC.begin();J.fpJ.begin();
+  for(const ch of J.cand.values()){const b=0.5+Math.abs(Math.sin(time*3+ch.i))*0.2;TMPM.makeRotationY(time*2+ch.i);TMPM.scale(TMPV.set(1.1,1.1,1.1));TMPM.setPosition(ch.x,b,ch.z);TMPC.set(ch.col);J.fpC.put(TMPM,TMPC);}
+  for(const c of chars){if(!c.active||c.out||!c.carry)continue;TMPM.makeRotationY(time*3);TMPM.scale(TMPV.set(0.9,0.9,0.9));TMPM.setPosition(c.x,c.y+1.75,c.z);TMPC.set(c.carry);J.fpC.put(TMPM,TMPC);}
+  JAR_POS.forEach((p,t)=>{const n=Math.min(J.fill[t],40);for(let k=0;k<n;k++){const a=k*2.4,r=0.25+(k%5)*0.18;TMPM.makeRotationY(a);TMPM.scale(TMPV.set(0.7,0.7,0.7));TMPM.setPosition(p[0]+Math.cos(a)*r,0.3+Math.floor(k/5)*0.22,p[1]+Math.sin(a)*r);TMPC.set(CANDY_COLS[k%CANDY_COLS.length]);J.fpJ.put(TMPM,TMPC);}});
+  J.fpC.end();J.fpJ.end();teamRings(J.fpR);
+}
+function thinkJar(c,dt){
+  if(c.stun>0||c.dive>0){c.inX=c.inZ=0;return;}
+  const J=L.jar,ai=c.ai;
+  if(c.carry){const p=JAR_POS[c.team];steer(c,p[0],p[1],1);stuck(c,dt);return;}
+  if(ai.dcd===undefined)ai.dcd=rand(0.5,1.5);ai.dcd-=dt;
+  if(ai.dcd<=0&&c.onGround){ai.dcd=rand(0.4,0.9);for(const o of chars){if(o.team===c.team||!o.carry||!o.active)continue;const dx=o.x-c.x,dz=o.z-c.z,d=Math.hypot(dx,dz);if(d<2.6&&d>0.5&&Math.random()<(ai.pers==='reckless'?0.9:0.55)){c.yaw=Math.atan2(dx,dz);c.inX=dx/d;c.inZ=dz/d;c.wantDive=true;return;}}}
+  ai.st=(ai.st||0)-dt;
+  if(ai.st<=0||!ai.chT||!J.cand.has(ai.chT.i)){ai.st=rand(0.3,0.6);let best=null,bs=1e9;for(const ch of J.cand.values()){let crowd=0;for(const o of chars)if(o!==c&&o.team===c.team&&o.ai&&o.ai.chT===ch)crowd++;const sc=Math.hypot(ch.x-c.x,ch.z-c.z)+crowd*3+Math.random();if(sc<bs){bs=sc;best=ch;}}ai.chT=best;}
+  if(ai.chT)steer(c,ai.chT.x,ai.chT.z,1);else{const o=chars.find(o=>o.team!==c.team&&o.carry);if(o)steer(c,o.x,o.z,1);else c.inX=c.inZ=0;}
+  stuck(c,dt);
+}
+/* ---- Frosting Paint ---- */
+const PNT_N=18,PNT_SP=1.2;
+function buildPaint(lv){
+  newLevel();
+  const H=PNT_N*PNT_SP/2;teamArena(H);
+  const im=new T.InstancedMesh(new T.BoxGeometry(PNT_SP*0.96,0.08,PNT_SP*0.96),ownMat(new T.MeshToonMaterial({color:0xffffff,gradientMap:gradMap})),PNT_N*PNT_N);
+  im.instanceColor=new T.InstancedBufferAttribute(new Float32Array(PNT_N*PNT_N*3),3);
+  const own=new Int8Array(PNT_N*PNT_N).fill(-1),base=new T.Color('#fff6e8');
+  for(let r=0;r<PNT_N;r++)for(let k=0;k<PNT_N;k++){const i=r*PNT_N+k;TDUMMY.position.set(-H+PNT_SP*(k+0.5),0.04,-H+PNT_SP*(r+0.5));TDUMMY.rotation.set(0,0,0);TDUMMY.scale.set(1,1,1);TDUMMY.updateMatrix();im.setMatrixAt(i,TDUMMY.matrix);im.setColorAt(i,base);}
+  L.group.add(im);
+  L.paint={im,own,H,cnt:[0,0],dirty:false,fpR:lfpool(RING_G,RING_MAT,24,true)};L.tp=[0,0];
+  L.ticks.push(paintTick);L.draws.push(paintDraw);
+  addDecor(ringSpots(10,17,24,0,7));
+}
+function paintIdx(x,z){const P=L.paint,k=Math.floor((x+P.H)/PNT_SP),r=Math.floor((z+P.H)/PNT_SP);if(k<0||r<0||k>=PNT_N||r>=PNT_N)return -1;return r*PNT_N+k;}
+function paintTick(h){
+  const P=L.paint;if(state!=='play')return;
+  for(const c of chars){if(!c.active||c.out||!c.inRound||!c.onGround)continue;const i=paintIdx(c.x,c.z);if(i<0||P.own[i]===c.team)continue;if(P.own[i]>=0)P.cnt[P.own[i]]--;P.own[i]=c.team;P.cnt[c.team]++;P.im.setColorAt(i,TEAM_C[c.team]);P.dirty=true;}
+  L.tp=[P.cnt[0],P.cnt[1]];
+  if(roundTime>=R.timeLimit)teamEnd();
+}
+function paintDraw(){const P=L.paint;if(P.dirty){P.im.instanceColor.needsUpdate=true;P.dirty=false;}teamRings(P.fpR);}
+function thinkPaint(c,dt){
+  if(c.stun>0||c.dive>0){c.inX=c.inZ=0;return;}
+  const P=L.paint,ai=c.ai;ai.wt-=dt;
+  const here=paintIdx(c.x,c.z);
+  if(ai.wt<=0||ai.wx===undefined||(here>=0&&P.own[paintIdx(ai.wx,ai.wz)]===c.team)){
+    let best=null,bs=-1e9;for(let t=0;t<14;t++){const x=rand(-P.H+0.8,P.H-0.8),z=rand(-P.H+0.8,P.H-0.8),i=paintIdx(x,z);const sc=(P.own[i]===c.team?-3:(P.own[i]<0?1:2))-Math.hypot(x-c.x,z-c.z)*0.12;if(sc>bs){bs=sc;best=[x,z];}}
+    ai.wx=best[0];ai.wz=best[1];ai.wt=rand(0.8,1.8);
+  }
+  steer(c,ai.wx,ai.wz,1);stuck(c,dt);
+}
+/* ---- Sprinkle Zone ---- */
+function buildZone(lv){
+  newLevel();
+  addDisc({cx:0,cz:0,r:12,top:0,tex:TEX.cake2,side:'#ffd6ea',th:2.4});
+  deco(new T.TorusGeometry(12,0.3,10,96),toon('#ffffff'),0,0.02,0).rotation.x=Math.PI/2;
+  L.arena={r:11.6,rimY:3};
+  const rng=seededRng(Math.floor(RNGF()*2147483647)),spots=[];for(let k=0;k<20;k++){const a=rng()*TAU,r=Math.sqrt(rng())*7.5;spots.push([Math.cos(a)*r,Math.sin(a)*r]);}
+  const zm=new T.Mesh(new T.CylinderGeometry(1,1,0.12,48),ownMat(new T.MeshBasicMaterial({color:0xffd23f,transparent:true,opacity:0.55,depthWrite:false})));zm.position.y=0.06;L.group.add(zm);
+  const wall=new T.Mesh(new T.CylinderGeometry(1,1,2.6,48,1,true),ownMat(new T.MeshBasicMaterial({color:0xffd23f,transparent:true,opacity:0.2,side:T.DoubleSide,depthWrite:false})));wall.position.y=1.3;L.group.add(wall);
+  L.zone={spots,k:0,x:spots[0][0],z:spots[0][1],r:3,move:10,tick:0,zm,wall,fpR:lfpool(RING_G,RING_MAT,24,true)};L.tp=[0,0];
+  L.ticks.push(zoneTick);L.draws.push(zoneDraw);
+  addDecor(ringSpots(10,17,24,0,7));
+}
+function spawnZone(list){list.forEach(c=>{const a=(c.team?0:Math.PI)+rand(-0.8,0.8),r=rand(7,10);placeChar(c,Math.cos(a)*r,0,Math.sin(a)*r,Math.atan2(-Math.cos(a),-Math.sin(a)));});}
+function zoneTick(h){
+  const Z=L.zone,play=state==='play',rt=play?roundTime:0;
+  const k=Math.floor(rt/Z.move),tgt=Z.spots[k%Z.spots.length];Z.x+=(tgt[0]-Z.x)*Math.min(1,h*2.5);Z.z+=(tgt[1]-Z.z)*Math.min(1,h*2.5);
+  if(k!==Z.k&&play){Z.k=k;showBanner('The zone moved!','',1);SFX.whoosh();}
+  const warn=Z.move-(rt%Z.move)<1.5;Z.zm.position.set(Z.x,0.06,Z.z);Z.zm.scale.set(Z.r,1,Z.r);Z.wall.position.set(Z.x,1.3,Z.z);Z.wall.scale.set(Z.r,1,Z.r);Z.zm.material.opacity=warn?0.3+0.25*Math.abs(Math.sin(time*10)):0.55;
+  if(!play)return;
+  Z.tick+=h;if(Z.tick>=0.5){Z.tick-=0.5;for(const c of chars){if(!c.active||c.out||!c.inRound)continue;if(Math.hypot(c.x-Z.x,c.z-Z.z)<Z.r&&c.y<1){L.tp[c.team]++;}}}
+  if(roundTime>=R.timeLimit)teamEnd();
+}
+function zoneDraw(){teamRings(L.zone.fpR);}
+function thinkZone(c,dt){
+  if(c.stun>0||c.dive>0){c.inX=c.inZ=0;return;}
+  const Z=L.zone,ai=c.ai,d=Math.hypot(c.x-Z.x,c.z-Z.z);
+  if(ai.dcd===undefined)ai.dcd=rand(0.5,1.5);ai.dcd-=dt;
+  if(d<Z.r+0.5&&ai.dcd<=0&&c.onGround){ai.dcd=rand(0.6,1.2);for(const o of chars){if(o.team===c.team||!o.active||o.out)continue;const dx=o.x-c.x,dz=o.z-c.z,dd=Math.hypot(dx,dz);if(dd<2.3&&dd>0.5&&Math.hypot(o.x-Z.x,o.z-Z.z)<Z.r&&Math.random()<(ai.pers==='reckless'?0.85:0.45)){c.yaw=Math.atan2(dx,dz);c.inX=dx/dd;c.inZ=dz/dd;c.wantDive=true;return;}}}
+  if(ai.zo===undefined){const a=Math.random()*TAU,r=Math.random()*1.8;ai.zo=[Math.cos(a)*r,Math.sin(a)*r];}
+  steer(c,Z.x+ai.zo[0],Z.z+ai.zo[1],d>1?1:0.3);stuck(c,dt);
+}
+
 /* ================= power-up candies =================
    Mystery candies float around most rounds. Grab one for a random power: Sugar Rush (speed),
    Jelly Spring (three super jumps), Bubble (blocks the next hit) or Sticky Gum (throw it at
@@ -3922,6 +4058,12 @@ RD.fountain={key:'fountain',net:true,title:'Chocolate Fountain',kind:'race',cam:
   desc:t=>'Climb the chocolate fountain! The chocolate pushes you to the edge. Hop on the marshmallow stairs to reach the next tier. The first '+t+' to the top go through.',ovPos:V3(0,24,26),ovLook:V3(0,6,0)};
 RD.boss={key:'boss',net:false,title:'Gummy King',kind:'boss',cam:'boss',build:buildBoss,spawn:spawnBoss,think:thinkBoss,update:()=>{},onFall:eliminate,killY:-4,time:()=>150,tempo:150,
   desc:()=>'Beat the Gummy King together! Jump his shockwaves, dodge the gumdrops, and stand on the glowing plates to fire the cannons.',ovPos:V3(0,15,21),ovLook:V3(0,5,-9)};
+RD.jar={key:'jar',net:false,title:'Candy Jar',kind:'team',cam:'arena',build:buildJar,spawn:spawnTeams,think:thinkJar,update:()=>{},onFall:teamFall,killY:-4,time:()=>60,tempo:136,
+  desc:()=>'Grab a candy and carry it to your team\'s jar. Dive into someone carrying one to make them drop it!',ovPos:V3(0,19,17),ovLook:V3(0,0,0)};
+RD.paint={key:'paint',net:false,title:'Frosting Paint',kind:'team',cam:'arena',build:buildPaint,spawn:spawnTeams,think:thinkPaint,update:()=>{},onFall:teamFall,killY:-4,time:()=>45,tempo:140,
+  desc:()=>'Every tile you run over turns your team\'s colour. The team with the most tiles wins!',ovPos:V3(0,19,17),ovLook:V3(0,0,0)};
+RD.zone={key:'zone',net:false,title:'Sprinkle Zone',kind:'team',cam:'arena',build:buildZone,spawn:spawnZone,think:thinkZone,update:()=>{},collide:arenaCollide,onFall:teamFall,killY:-4,time:()=>50,tempo:144,
+  desc:()=>'Stand in the glowing zone to score for your team. It moves every few seconds. Dive to push the other team out!',ovPos:V3(0,19,17),ovLook:V3(0,0,0)};
 const SLOTS=[
   {label:'Easy',d:1,keep:0.8,pool:['race','piano','rapids','freeze','slide']},
   {label:'Medium',d:2,keep:0.75,pool:['grill','mixer','cutter','piano','tag','cupcakes','slide','chef']},
@@ -3974,6 +4116,7 @@ function startGame(){
   if(RUN==='daily'){show=dailyShow();curSlots=SLOTS;DAILY_PRACTICE=dailyDone();}
   else if(RUN==='endless'){show=[];show.push(endlessKey());curSlots=[endlessSlot(0)];}
   else if(RUN==='boss'){show=['boss'];curSlots=[{label:'Boss',d:4,keep:0}];}
+  else if(RUN==='teams'){teamSetup();show=shuffle(['jar','paint','zone']);curSlots=[0,1,2].map(()=>({label:'Team',d:2,keep:1}));}
   else curSlots=SLOTS;
   beginRound(0);
 }
@@ -4016,6 +4159,7 @@ function endRound(res){
   if(res.final||!res.ok){diffAfterShow(res);if(NET.mode==='off')modeShowEnd(res);}
   awardCoins(res);
   if(res.boss){}
+  else if(res.team){const t=player.team||0;if(res.final)showBanner(TSCORE[t]>TSCORE[1-t]?'Your team wins!':(TSCORE[t]<TSCORE[1-t]?'The other team wins':'It\'s a draw!'),TEAMS[0].name+' '+TSCORE[0]+' - '+TSCORE[1]+' '+TEAMS[1].name,2.6);else showBanner(res.tw<0?'Draw!':TEAMS[res.tw].name+' wins the round!','',2.2);if(res.tw===t)SFX.qualify();}
   else if(res.win)showBanner('You win!','The cherry is yours',2.6);
   else if(res.final&&res.spect)showBanner(res.winner?res.winner+' wins!':'Time is up',res.winner?'They grabbed the cherry':'Nobody reached the cherry',2.4);
   else if(res.spect)showBanner('Round over',res.q+' of '+res.n+' go through',2.2);
@@ -4048,7 +4192,9 @@ function showResults(){
     text.textContent=why[R.key]||'You are out of the show.';
   }
   const rc=$('resCoins');rc.hidden=!lastCoins;if(lastCoins){$('resCoinT').textContent='+'+lastCoins+' coins';setTimeout(()=>{if(state==='results')SFX.coin();},350);}
-  if(res.boss){head.className='head '+(res.win?'win':'out');head.textContent=res.win?'You beat the Gummy King!':(res.ok===false&&L.boss&&L.boss.hp<=0?'He\'s down, but you fell':'The Gummy King won');text.textContent=res.win?(res.q+' marshmallows were still standing at the end. Times you beat him: '+(parseInt(load('pp.bossWins','0'),10)||0)+'.'):(L.boss&&L.boss.hp<=0?'Your team won, but you fell off before the end.':'He had '+Math.ceil(L.boss?L.boss.hp:0)+'% health left. Stand on the glowing plates to fire the cannons!');}
+  if(res.team){const t=player.team||0,yw=TSCORE[t],ow=TSCORE[1-t];if(res.final){head.className='head '+(yw>ow?'win':'out');head.textContent=yw>ow?'Your team won!':(yw<ow?'Your team lost':'It\'s a draw!');if(yw>ow){const w=(parseInt(load('pp.teamWins','0'),10)||0)+1;save('pp.teamWins',String(w));}}else{head.className='head '+(res.tw===t?'ok':'out');head.textContent=res.tw<0?'Draw!':(res.tw===t?'Your team won the round!':TEAMS[res.tw].name+' won the round');}
+    text.textContent=TEAMS[0].name+' '+res.tp[0]+' : '+res.tp[1]+' '+TEAMS[1].name+' this round. Battle score: '+TEAMS[0].name+' '+TSCORE[0]+' - '+TSCORE[1]+' '+TEAMS[1].name+'. You are on '+TEAMS[t].name+'.';}
+  else if(res.boss){head.className='head '+(res.win?'win':'out');head.textContent=res.win?'You beat the Gummy King!':(res.ok===false&&L.boss&&L.boss.hp<=0?'He\'s down, but you fell':'The Gummy King won');text.textContent=res.win?(res.q+' marshmallows were still standing at the end. Times you beat him: '+(parseInt(load('pp.bossWins','0'),10)||0)+'.'):(L.boss&&L.boss.hp<=0?'Your team won, but you fell off before the end.':'He had '+Math.ceil(L.boss?L.boss.hp:0)+'% health left. Stand on the glowing plates to fire the cannons!');}
   else if(res.endless!==undefined){head.className='head '+(res.newBest?'win':'out');head.textContent=res.newBest?'New record!':'Out!';text.textContent='You survived '+res.endless+(res.endless===1?' round':' rounds')+' in Endless mode. Your best: '+ENDLESS_BEST+'. '+text.textContent;}
   else if(res.dailySaved)text.textContent+=' Your Daily #'+dayNum()+' result is saved: '+dailyGrid(DAILY.grid)+'.';
   else if(RUN==='daily'&&(res.final||!res.ok)&&DAILY_PRACTICE)text.textContent+=' (Practice run. Only your first Daily try counts.)';
@@ -4090,6 +4236,7 @@ function updateHUD(){
       if(k==='freeze'&&L.fz&&state==='play'){const fs=freezeState(roundTime);if(fs.k==='watch'||fs.k==='turn'){st='FREEZE!';sb='Don\'t move until the bear turns back';}else if(fs.k==='fake'){st='Careful...';}}}
   }else if(k==='crown'){st='Grab the cherry';sb=fmt(R.timeLimit-roundTime)+' left';}
   else if(k==='chef'&&L.chef){const cm=chefCur();if(player.out)st='Eliminated';else if(cm&&roundTime<cm.t1){st=(cm.real?'Chef says: ':'')+CHEF_LBL[cm.kind]+'!';sb=countAlive()+' alive, top '+R.target+' go through';}else{st='Listen to the chef';sb=countAlive()+' alive, top '+R.target+' go through';}}
+  else if(R.kind==='team'&&L.tp){const hint={jar:'Bring candies to your jar',paint:'Paint the floor your colour',zone:'Stand in the glowing zone'}[k]||'';st=teamHud();sb='You are '+TEAMS[player.team||0].name+'. '+hint+', '+fmt(Math.max(0,R.timeLimit-roundTime))+' left';}
   else if(k==='boss'&&L.boss){st=player.out?'Eliminated':countAlive()+' standing';sb=fmt(Math.max(0,R.timeLimit-roundTime))+' left. Stand on the glowing plates to fire!';}
   else if(k==='stack'&&L.stk){const left=Math.max(0,R.timeLimit-roundTime),n=player.stkN||0;let lead=null;for(const c of chars)if(c.inRound&&c.active&&(!lead||(c.stkN||0)>(lead.stkN||0)))lead=c;st='Your stack: '+n;sb=(lead&&lead.stkN?'Most: '+(lead===player?'you':lead.name)+' ('+lead.stkN+'), ':'')+fmt(left)+' left';}
   else if(k==='memory'&&L.mem){
@@ -4406,7 +4553,7 @@ $('skip').addEventListener('click',()=>{
    Classic: the usual 5-round show. Daily: one show a day, the same for everyone, first try counts.
    Chaos: every round gets a random twist. Endless: round after round until you are out.
    Daily, Chaos and Endless are single-player; online shows are always Classic (or a custom party). */
-const MODES=['classic','daily','chaos','endless','boss'];
+const MODES=['classic','daily','chaos','endless','boss','teams'];
 let MODE=(function(){const m=load('pp.mode','classic');return MODES.indexOf(m)>=0?m:'classic';})(),RUN='classic',DAILY_PRACTICE=false;
 if(AUTO&&window.__mode&&MODES.indexOf(window.__mode)>=0)MODE=window.__mode;
 const MODE_INFO={
@@ -4414,6 +4561,7 @@ const MODE_INFO={
   daily:'Today\'s show is the same for everyone in the world. Only your first try counts, so make it good!',
   chaos:'Every round gets a crazy twist: low gravity, butter floors, lights out, giants, wind and more.',
   endless:'Round after round, each one harder, until you are out. How far can you go?',
+  teams:'Pink against Blue, 10 marshmallows each, in three team rounds: Candy Jar, Frosting Paint and Sprinkle Zone. Win two rounds to win the battle.',
   boss:'Team up with 19 marshmallows against the Gummy King! Jump his shockwaves, dodge the gumdrops, and stand on the glowing plates to fire the cannons at him.'
 };
 /* ---- daily ---- */
@@ -4470,9 +4618,11 @@ function modeMenu(){
   if(m==='daily')sub+=' '+dailyLine()+'.';else if(m==='endless')sub+=' Your best: '+ENDLESS_BEST+(ENDLESS_BEST===1?' round.':' rounds.');
   $('menuSub').textContent=sub;
   if(m==='boss'){const w=parseInt(load('pp.bossWins','0'),10)||0;sub+=' Times you beat him: '+w+'.';}
-  $('shuffle').hidden=m==='daily'||m==='endless'||m==='boss';
-  $('sideTitle').textContent=m==='daily'?'Today\'s show (Daily #'+dayNum()+')':(m==='endless'?'Endless run':(m==='boss'?'Boss fight':'This show'));
-  $('menuRounds').hidden=m==='endless'||m==='boss';$('endlessNote').hidden=m!=='endless'&&m!=='boss';
+  if(m==='teams'){const w=parseInt(load('pp.teamWins','0'),10)||0;sub+=' Battles won: '+w+'.';}
+  $('shuffle').hidden=m==='daily'||m==='endless'||m==='boss'||m==='teams';
+  $('sideTitle').textContent=m==='daily'?'Today\'s show (Daily #'+dayNum()+')':(m==='endless'?'Endless run':(m==='boss'?'Boss fight':(m==='teams'?'Team battle':'This show')));
+  $('menuRounds').hidden=m==='endless'||m==='boss'||m==='teams';$('endlessNote').hidden=m!=='endless'&&m!=='boss'&&m!=='teams';
+  if(m==='teams')$('endlessNote').textContent='You play for Pink. Candy Jar: carry candies to your jar. Frosting Paint: turn the floor pink. Sprinkle Zone: hold the glowing zone.';
   if(m==='boss')$('endlessNote').textContent='One big fight. Fall off the cake and you are out. Knock his health to zero before the time runs out and everyone still standing wins.';
   if(m==='endless')$('endlessNote').textContent='Every round is picked at random from all 15 rounds and gets a little harder. Everyone you knocked out comes back each round, but the top spots get fewer. Best: '+ENDLESS_BEST+'.';
 }
@@ -4563,6 +4713,7 @@ function snapPlayer(kind){
 function roundTitle(i){const r=RD[show[i]];return r?r.title:'round '+(i+1);}
 function cardText(res){
   const n=show.length,won=roundIdx;
+  if(res.team){const t=player.team||0;return TSCORE[t]>TSCORE[1-t]?['My team won the battle!',TEAMS[t].name+' vs '+TEAMS[1-t].name+' in Puff Party']:['Team battle: so close!',TEAMS[t].name+' vs '+TEAMS[1-t].name+' in Puff Party'];}
   if(res.boss)return res.win?['I beat the Gummy King!','Boss fight in Puff Party']:['The Gummy King got me!','Boss fight in Puff Party'];
   if(res.endless!==undefined){const e=res.endless;return [e>0?'I survived '+e+' round'+(e>1?'s':'')+'!':'Round 1 got me!',res.newBest?'A new Endless record in Puff Party':'Endless mode in Puff Party'];}
   const dl=RUN==='daily'?' (Daily #'+dayNum()+')':'';
@@ -4688,6 +4839,7 @@ const CAST={
   choco:['Chocolate surge! Climb, climb, climb!','The chocolate is coming faster!'],
   cherry:['{n} gets the cherry on top!','What a finish for {n}!'],
   sprinkled:['Sprinkled!','Bonk! Right on the head!'],
+  jarScore:['Into the jar!','Sweet score!','One more for the team!'],
   bossFire:['Fire!','Bullseye!','Take that, King!'],
   cut:['Snip! The cutter got you!','Oops, you were part of the cookie!','Into the cookie jar you go!'],
   stir:['Here comes the spoon!','Stir it up!','Hold on to your sugar cube!'],
