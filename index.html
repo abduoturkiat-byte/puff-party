@@ -4639,7 +4639,8 @@ function applyPlayerInput(){
   if(state!=='play'){player.inX=player.inZ=0;return;}
   const K=input.keys;let x=input.sx,z=input.sy;
   if(K.KeyA||K.ArrowLeft)x-=1;if(K.KeyD||K.ArrowRight)x+=1;if(K.KeyW||K.ArrowUp)z-=1;if(K.KeyS||K.ArrowDown)z+=1;
-  const c=Math.cos(camYaw),s=Math.sin(camYaw);
+  /* steer relative to where the camera really looks, so cameras that turn on their own (the fountain) still feel right */
+  const dx=camPos.x-camLook.x,dz=camPos.z-camLook.z,yaw=dx*dx+dz*dz>0.01?Math.atan2(dx,dz):camYaw,c=Math.cos(yaw),s=Math.sin(yaw);
   player.inX=x*c+z*s;player.inZ=-x*s+z*c;
 }
 /* ================= style picker ================= */
@@ -5632,7 +5633,7 @@ function followPose(outP,outL,dt){
     case 'arena':tx=p.x*0.72;ty=0;tz=p.z*0.72;ay=0.5;az=-1;oy=8.8*k;oz=10.5*k;break;
     case 'freeze':tx=p.x*0.7+p.vx*0.08;ty=py;tz=p.z;ay=3;az=-2;oy=2*k;oz=14*k;break;
     case 'follow':tx=p.x*0.88;ty=0;tz=p.z*0.88;ay=0.5;az=-0.6;oy=7.4*k;oz=8.8*k;break;
-    case 'boss':tx=p.x*0.6;ty=0;tz=p.z*0.55;ay=5.5;az=-6;oy=4.5*k;oz=13*k;break;
+    case 'boss':tx=p.x*0.85;ty=0;tz=p.z;ay=1;az=-7;oy=8*k;oz=18*k;break;
     case 'tower':tx=p.x;ty=py;tz=p.z;ay=1.0;az=0;oy=5.6*k;oz=11*k;yo=Math.atan2(p.x,p.z);break;
     default:tx=p.x*0.45;ty=0;tz=p.z*0.4;ay=0;az=-1.6;oy=12.5*k;oz=12.5*k;
   }
@@ -5825,7 +5826,8 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 try{const hot=window.claude&&window.claude.hot;if(hot&&typeof hot.snapshot==='function')hot.snapshot(()=>({wins}));}catch(e){}
-if(AUTO)window.__mm={renderer,scene,chars,get state(){return state;},get round(){return R.key;},get L(){return L;},get net(){return {mode:NET.mode,inShow:NET.inShow,lobby:NET.lobby,rseq:NET.rseq,peers:NET.peers.size,mySlot:NET.mySlot,status:NET.status,err:NET.err,hostId:NET.hostId,code:NET.code,lt:L?L.t:0,off:NET.off,q:NET.evq.length,show:show.slice(),roundIdx};},get NS(){return NS;},get player(){return player;},get res(){return lastResult;},get roundTime(){return roundTime;},FACE_TEX,setExpr,doEmote,EXPR,testCard(res,ri){lastResult=res;if(ri!==undefined)roundIdx=ri;return openCard();},get cardURL(){return cardURL;},get show(){return show;}};
+if(!AUTO&&window.__probe===true)window.__probe={get player(){return player;},get state(){return state;},get round(){return R.key;},camPos,camLook};
+if(AUTO)window.__mm={renderer,scene,chars,camera,get state(){return state;},get round(){return R.key;},get L(){return L;},get net(){return {mode:NET.mode,inShow:NET.inShow,lobby:NET.lobby,rseq:NET.rseq,peers:NET.peers.size,mySlot:NET.mySlot,status:NET.status,err:NET.err,hostId:NET.hostId,code:NET.code,lt:L?L.t:0,off:NET.off,q:NET.evq.length,show:show.slice(),roundIdx};},get NS(){return NS;},get player(){return player;},get res(){return lastResult;},get roundTime(){return roundTime;},FACE_TEX,setExpr,doEmote,EXPR,testCard(res,ri){lastResult=res;if(ri!==undefined)roundIdx=ri;return openCard();},get cardURL(){return cardURL;},get show(){return show;}};
 applyQuality();
 setupMenu();
 requestAnimationFrame(t=>{last=t;requestAnimationFrame(frame);});
