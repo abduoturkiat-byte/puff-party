@@ -136,6 +136,8 @@ body{position:relative;background:var(--sky);color:var(--grape);font-family:var(
 .share-img{display:block;height:min(330px,calc(100cqh - 84px));width:auto;aspect-ratio:4/5;border-radius:16px;border:3px solid var(--grape);background:var(--blush);-webkit-touch-callout:default;-webkit-user-select:auto;user-select:auto;touch-action:auto}
 .card-hint{margin:0;font:500 13px/1.4 var(--font-ui);color:var(--grape-soft);max-width:30ch}
 a.ghost-btn{display:inline-block;text-decoration:none}
+.pad-btn.item.nudge{animation:nudge .45s ease 3}
+@keyframes nudge{0%,100%{transform:scale(1)}50%{transform:scale(1.28)}}
 .toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);background:var(--grape);color:#fff;font:600 13px var(--font-ui);padding:9px 16px;border-radius:999px;pointer-events:none;white-space:nowrap}
 button:focus-visible{outline:3px solid var(--lemon);outline-offset:3px}
 .tbar{width:170px;height:10px;box-sizing:border-box;border-radius:999px;background:rgba(255,255,255,.6);border:2px solid var(--grape);overflow:hidden;margin-top:2px}
@@ -3543,9 +3545,16 @@ const elItemBtn=$('btnItem'),elItemIcon=$('itemIcon'),elItemName=$('itemName');
 function resetBuffs(c){c.item=null;c.boostT=0;c.gooT=0;c.shieldT=0;c.superJ=0;c.superT=0;c.gooVis=0;c.itemT=rand(0.6,2.2);}
 function paintItemBtn(){
   const it=player.item;
+  elItemBtn.classList.remove('nudge');
   if(!it){if(!elItemBtn.hidden)elItemBtn.hidden=true;return;}
   elItemIcon.innerHTML=ITEM_INFO[it].icon;elItemName.textContent=ITEM_INFO[it].name;
   if(elItemBtn.hidden){elItemBtn.hidden=false;elItemBtn.classList.remove('pop');void elItemBtn.offsetWidth;if(!reduceMotion)elItemBtn.classList.add('pop');}
+}
+/* keep candies away from gumdrop bumpers and posts, or they can't be reached */
+function itemClear(x,z){
+  for(const b of L.bumpers){const dx=Math.max(0,Math.abs(x-b.x0)-(b.amp||0)),dz=z-b.cz;if(Math.hypot(dx,dz)<b.r+1.4)return false;}
+  for(const p of L.cyls){if(p.r<3&&Math.hypot(x-p.cx,z-p.cz)<p.r+1.1)return false;}
+  return true;
 }
 function placeItems(){
   L.items=[];L.gums=[];
@@ -3553,12 +3562,12 @@ function placeItems(){
   const pts=[],race=R.kind==='race'||R.key==='crown';
   if(race){
     const z0=(L.cps&&L.cps[0]?L.cps[0].z:2)-3,z1=(R.key==='crown'?-36:(L.finishZ||-40)+3),N=R.key==='crown'?5:8;
-    for(let k=0;k<N;k++)for(let tries=0;tries<6;tries++){const z=z0+(z1-z0)*(k+0.5)/N+rand(-2,2),x=rand(-4.5,4.5),g=groundAt(x,z,60);if(g&&!g.s.raft&&!g.s.bounce&&!g.s.cup&&g.s.cl===undefined){pts.push([x,g.h+1.0,z]);break;}}
+    for(let k=0;k<N;k++)for(let tries=0;tries<6;tries++){const z=z0+(z1-z0)*(k+0.5)/N+rand(-2,2),x=rand(-4.5,4.5),g=groundAt(x,z,60);if(g&&!g.s.raft&&!g.s.bounce&&!g.s.cup&&g.s.cl===undefined&&itemClear(x,z)){pts.push([x,g.h+1.0,z]);break;}}
   }else if(R.key==='sugar'){
     for(let k=0;k<5;k++){const r=SUG_RINGS[k%3][0],a=rand(0,TAU);pts.push([Math.cos(a)*r,1.0,Math.sin(a)*r]);}
   }else{
     const Rr=R.key==='tag'?9:(L.arena?L.arena.r-1.5:8),N=5;
-    for(let k=0;k<N;k++)for(let tries=0;tries<10;tries++){const a=rand(0,TAU),r=Math.sqrt(RNGF())*Rr,x=Math.cos(a)*r,z=Math.sin(a)*r+(R.key==='wall'?-2:0),g=groundAt(x,z,60);if(g&&!g.s.raft&&!g.s.bounce&&g.s.cup===undefined){pts.push([x,g.h+1.0,z]);break;}}
+    for(let k=0;k<N;k++)for(let tries=0;tries<10;tries++){const a=rand(0,TAU),r=Math.sqrt(RNGF())*Rr,x=Math.cos(a)*r,z=Math.sin(a)*r+(R.key==='wall'?-2:0),g=groundAt(x,z,60);if(g&&!g.s.raft&&!g.s.bounce&&g.s.cup===undefined&&itemClear(x,z)){pts.push([x,g.h+1.0,z]);break;}}
   }
   pts.forEach((p,i)=>{
     const o=new T.Object3D();o.position.set(p[0],p[1],p[2]);L.group.add(o);lpool('itemC',ITEM_G,MAT_HAT,10,true).add(o,0xffffff);
@@ -3589,6 +3598,8 @@ function itemTick(h){
       for(const it of L.items){if(!it.avail)continue;const dx=player.x-it.x,dz=player.z-it.z;if(dx*dx+dz*dz<1.21&&player.y>it.y-1.75&&player.y<it.y+0.45){NET.pickT=L.t+0.35;netToHost({k:'pickc',r:NET.rseq,i:it.i});break;}}
     }
   }
+  /* you can only carry one power-up: tell the player when they run into another one */
+  if(state==='play'&&player.item&&!player.out&&time>(L.itemHintT||0))for(const it of L.items){if(!it.avail)continue;const dx=player.x-it.x,dz=player.z-it.z;if(dx*dx+dz*dz<1.21&&player.y>it.y-1.75&&player.y<it.y+0.45){L.itemHintT=time+4;toast('Use your power-up first, then grab another');const b=$('btnItem');b.classList.remove('nudge');void b.offsetWidth;b.classList.add('nudge');break;}}
   /* gum in flight */
   for(const g of L.gums){
     if(g.done)continue;const b=g.b;if(L.t-g.t0>=g.dur){g.done=true;gumHit(b,g.a);}
